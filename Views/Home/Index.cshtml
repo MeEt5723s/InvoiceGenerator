@@ -26,12 +26,10 @@
             border-radius: 8px;
         }
 
-        /* Added bottom padding to prevent footer overlap */
         .container-fluid {
-            padding-bottom: 80px; /* adjust as needed or match footer height */
+            padding-bottom: 80px;
         }
 
-        /* Optional: extra margin below generate button */
         button[type="submit"].btn-lg {
             margin-bottom: 20px;
         }
@@ -117,7 +115,7 @@
                 </div>
 
                 <div class="col-md-6">
-                    <!-- Company Details Section - Now Read-only -->
+                    <!-- Company Details Section -->
                     <div class="form-section">
                         <h4>Company Details</h4>
                         <div class="mb-3">
@@ -228,8 +226,17 @@ INDIA</textarea>
                                 <p><strong>Due Amount:</strong> ₹<span id="dueAmount">0.00</span></p>
                             </div>
                         </div>
-
                     </div>
+                </div>
+            </div>
+
+            <!-- Custom File Name Input -->
+            <div class="row mb-3">
+                <div class="col-md-6 offset-md-3">
+                    <label for="customFileName" class="form-label">PDF File Name</label>
+                    <input type="text" id="customFileName" name="customFileName" class="form-control"
+                           value="@(Model != null ? $"Invoice-{Model.InvoiceNumber}.pdf" : "")" />
+                    <div class="form-text">You can change the PDF file name before downloading (include .pdf or it will be appended automatically).</div>
                 </div>
             </div>
 
@@ -270,7 +277,6 @@ INDIA</textarea>
         document.querySelector('[name="TaxableAmount"]').addEventListener('input', calculateAmounts);
         document.querySelector('[name="ReceivedAmount"]').addEventListener('input', calculateAmounts);
 
-        // Toggle refundable status
         const refundableToggle = document.getElementById('refundableToggle');
         const refundableLabel = document.getElementById('refundableLabel');
 
@@ -284,7 +290,6 @@ INDIA</textarea>
             }
         });
 
-        // Initial label setup
         if (refundableToggle.checked) {
             refundableLabel.textContent = 'Refundable';
             refundableLabel.className = 'form-check-label text-success';
@@ -293,7 +298,6 @@ INDIA</textarea>
             refundableLabel.className = 'form-check-label text-danger';
         }
 
-        // Initial calculation
         calculateAmounts();
     </script>
 </body>

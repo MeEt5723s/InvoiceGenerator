@@ -48,6 +48,33 @@ namespace InvoiceGen.Repo
                 ? $"<img src='data:image/jpeg;base64,{logoBase64}' alt='Company Logo' style='width: 90px; height: 90px;' />"
                 : "<div style='width: 90px; height: 90px; border: 2px solid #000; border-radius: 50%; text-align: center; line-height: 86px; font-weight: bold; font-size: 24px;'>🦘</div>";
 
+            // Conditional city+state HTML
+            string cityState = "";
+            if (!string.IsNullOrWhiteSpace(invoice.BillToCity) || !string.IsNullOrWhiteSpace(invoice.BillToState))
+            {
+                var city = invoice.BillToCity ?? "";
+                var state = invoice.BillToState ?? "";
+                cityState = $"<p>{city}{(string.IsNullOrWhiteSpace(city) || string.IsNullOrWhiteSpace(state) ? "" : ", ")}{state}</p>";
+            }
+
+            // Conditional country HTML
+            string country = !string.IsNullOrWhiteSpace(invoice.BillToCountry)
+                ? $"<p>{invoice.BillToCountry}</p>"
+                : "";
+
+            // Conditional disclaimer section HTML
+            string disclaimerSection = !string.IsNullOrWhiteSpace(invoice.Disclaimer)
+                ? $@"
+        <div class='disclaimer'>
+            <h4>Disclaimer:</h4>
+            <p>{invoice.Disclaimer}</p>
+            <p><strong>{invoice.RefundableStatus}</strong></p>
+        </div>"
+                : $@"
+        <div class='disclaimer'>
+            <p><strong>{invoice.RefundableStatus}</strong></p>
+        </div>";
+
             return $@"
 <!DOCTYPE html>
 <html>
@@ -188,8 +215,8 @@ namespace InvoiceGen.Repo
                 <h3>Bill To:</h3>
                 <p><strong>{invoice.BillToName}</strong></p>
                 <p>{invoice.BillToAddress}</p>
-                <p>{invoice.BillToCity}, {invoice.BillToState}</p>
-                <p>{invoice.BillToCountry}</p>
+                {cityState}
+                {country}
                 <p><strong>Contact No:</strong> {invoice.BillToContact}</p>
                 <p><strong>Email:</strong> {invoice.BillToEmail}</p>
             </div>
@@ -250,15 +277,15 @@ namespace InvoiceGen.Repo
                 <td><strong>INR {invoice.DueAmount:N2}</strong></td>
             </tr>
         </table>
-        <div class='disclaimer'>
-            <h4>Disclaimer:</h4>
-            <p>{invoice.Disclaimer}</p>
-            <p><strong>{invoice.RefundableStatus}</strong></p>
-        </div>
+
+        {disclaimerSection}
+
     </div>
 </body>
 </html>";
         }
+
+
 
 
 

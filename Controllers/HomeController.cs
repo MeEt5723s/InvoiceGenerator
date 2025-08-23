@@ -29,14 +29,29 @@ public class HomeController : Controller
     }
 
     [HttpPost]
-    public IActionResult GenerateInvoice(InvoiceModel model)
+    public IActionResult GenerateInvoice(InvoiceModel model, string customFileName)
     {
         if (ModelState.IsValid)
         {
             var pdf = _pdfService.GenerateInvoicePdf(model);
-            return File(pdf, "application/pdf", $"Invoice-{model.InvoiceNumber}.pdf");
+
+            // Use the custom file name if provided, else default
+            var fileName = !string.IsNullOrWhiteSpace(customFileName) ? customFileName : $"Invoice-{model.InvoiceNumber}.pdf";
+
+            // Add ".pdf" extension if missing
+            if (!fileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            {
+                fileName += ".pdf";
+            }
+
+            // Return the PDF file to download with the chosen file name
+            return File(pdf, "application/pdf", fileName);
         }
 
+        ViewBag.ServiceList = new SelectList(InvoiceModel.AvailableServices);
+
+        // If validation fails, show form again with model data
         return View("Index", model);
     }
+
 }

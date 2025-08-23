@@ -15,10 +15,10 @@ namespace InvoiceGen.Models
         [Required]
         public string BillToName { get; set; } = string.Empty;
         public string BillToAddress { get; set; } = string.Empty;
-        public string BillToCity { get; set; } = string.Empty;
-        public string BillToState { get; set; } = string.Empty;
-        public string BillToCountry { get; set; } = string.Empty;
-        public string BillToContact { get; set; } = string.Empty;
+        public string? BillToCity { get; set; } = string.Empty;
+        public string? BillToState { get; set; } = string.Empty;
+        public string? BillToCountry { get; set; } = string.Empty;
+        public string? BillToContact { get; set; } = string.Empty;
         public string BillToEmail { get; set; } = string.Empty;
 
         // Company Details - These are now constants
@@ -63,5 +63,6 @@ namespace InvoiceGen.Models
 
         public string RefundableStatus => IsRefundable ? "Refundable" : "Nonrefundable";
 
-}
+
+    }
 }
