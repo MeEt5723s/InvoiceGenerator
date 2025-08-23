@@ -1,6 +1,7 @@
 using InvoiceGen.Models;
 using InvoiceGen.Repo;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
 
 public class HomeController : Controller
 {
@@ -16,8 +17,13 @@ public class HomeController : Controller
         var model = new InvoiceModel
         {
             InvoiceNumber = $"INV{DateTime.Now:yyyyMMdd}-{new Random().Next(100, 999)}",
-            InvoiceDate = DateTime.Now
+            InvoiceDate = DateTime.Now,
+            // Provide a default selected service
+            ServiceDescription = InvoiceModel.AvailableServices.First()
         };
+
+        // Pass the list of available services for the dropdown
+        ViewBag.ServiceList = new SelectList(InvoiceModel.AvailableServices);
 
         return View(model);
     }

@@ -27,7 +27,19 @@ namespace InvoiceGen.Models
         public string GSTNumber => "24GOIPS7235K1ZC";
 
         // Service Details - This is now a constant
-        public string ServiceDescription => "Visitor Visa - Australia (600) Tourist Stream";
+        [Required]
+        public string ServiceDescription { get; set; } = string.Empty;
+
+        // And optionally a static list of possible services (or populate dynamically)
+        public static List<string> AvailableServices => new List<string>
+{
+    "Visitor Visa - Australia (600) Tourist Stream",
+    "Business Visa - Australia (subclass 600)",
+    "Tourist Visa - Canada",
+    "Student Visa - UK",
+    "Work Visa - USA"
+};
+
 
         [Required]
         [Range(0.01, double.MaxValue, ErrorMessage = "Taxable amount must be greater than 0")]

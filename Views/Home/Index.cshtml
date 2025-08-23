@@ -25,6 +25,16 @@
             background: white;
             border-radius: 8px;
         }
+
+        /* Added bottom padding to prevent footer overlap */
+        .container-fluid {
+            padding-bottom: 80px; /* adjust as needed or match footer height */
+        }
+
+        /* Optional: extra margin below generate button */
+        button[type="submit"].btn-lg {
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
@@ -133,9 +143,11 @@ INDIA</textarea>
                     <div class="form-section">
                         <h4>Service Details</h4>
                         <div class="mb-3">
-                            <label class="form-label">Service Description</label>
-                            <input type="text" value="Visitor Visa - Australia (600) Tourist Stream" class="form-control" readonly />
-                            <small class="text-muted">This service description is fixed for this invoice template.</small>
+                            <label asp-for="ServiceDescription" class="form-label">Service Description</label>
+                            <select asp-for="ServiceDescription" class="form-select" asp-items="ViewBag.ServiceList">
+                                <option value="">-- Select Service --</option>
+                            </select>
+                            <span asp-validation-for="ServiceDescription" class="text-danger"></span>
                         </div>
                         <div class="row">
                             <div class="col-md-4">
@@ -216,7 +228,7 @@ INDIA</textarea>
                                 <p><strong>Due Amount:</strong> ₹<span id="dueAmount">0.00</span></p>
                             </div>
                         </div>
-                   
+
                     </div>
                 </div>
             </div>
