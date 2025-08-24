@@ -33,6 +33,10 @@
         button[type="submit"].btn-lg {
             margin-bottom: 20px;
         }
+
+        .required {
+            color: red;
+        }
     </style>
 </head>
 <body>
@@ -43,7 +47,7 @@
             </div>
         </div>
 
-        <form asp-action="GenerateInvoice" method="post">
+        <form asp-action="GenerateInvoice" method="post" novalidate>
             <div class="row">
                 <div class="col-md-6">
                     <!-- Invoice Details Section -->
@@ -52,15 +56,15 @@
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label asp-for="InvoiceNumber" class="form-label">Invoice Number</label>
-                                    <input asp-for="InvoiceNumber" class="form-control" />
+                                    <label asp-for="InvoiceNumber" class="form-label">Invoice Number <span class="required">*</span></label>
+                                    <input asp-for="InvoiceNumber" class="form-control" required/>
                                     <span asp-validation-for="InvoiceNumber" class="text-danger"></span>
                                 </div>
                             </div>
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label asp-for="InvoiceDate" class="form-label">Invoice Date</label>
-                                    <input asp-for="InvoiceDate" type="date" class="form-control" />
+                                    <label asp-for="InvoiceDate" class="form-label">Invoice Date <span class="required">*</span></label>
+                                    <input asp-for="InvoiceDate" type="date" class="form-control" required/>
                                     <span asp-validation-for="InvoiceDate" class="text-danger"></span>
                                 </div>
                             </div>
@@ -71,13 +75,13 @@
                     <div class="form-section">
                         <h4>Bill To</h4>
                         <div class="mb-3">
-                            <label asp-for="BillToName" class="form-label">Customer Name</label>
-                            <input asp-for="BillToName" class="form-control" />
+                            <label asp-for="BillToName" class="form-label">Customer Name <span class="required">*</span></label>
+                            <input asp-for="BillToName" class="form-control" required/>
                             <span asp-validation-for="BillToName" class="text-danger"></span>
                         </div>
                         <div class="mb-3">
-                            <label asp-for="BillToAddress" class="form-label">Address</label>
-                            <textarea asp-for="BillToAddress" class="form-control" rows="3"></textarea>
+                            <label asp-for="BillToAddress" class="form-label">Address <span class="required">*</span></label>
+                            <textarea asp-for="BillToAddress" class="form-control" rows="3" required/></textarea>
                         </div>
                         <div class="row">
                             <div class="col-md-6">
@@ -100,14 +104,15 @@
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label asp-for="BillToContact" class="form-label">Contact Number</label>
-                                    <input asp-for="BillToContact" class="form-control" />
+                                    <label asp-for="BillToContact" class="form-label">Contact Number <span class="required">*</span></label>
+                                    <input asp-for="BillToContact" class="form-control" required/>
                                 </div>
                             </div>
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label asp-for="BillToEmail" class="form-label">Email</label>
-                                    <input asp-for="BillToEmail" type="email" class="form-control" />
+                                    <label asp-for="BillToEmail" class="form-label">Email <span class="required">*</span></label>
+                                    <input asp-for="BillToEmail" type="email" class="form-control" required/>
+                                    <span asp-validation-for="BillToEmail" class="text-danger"></span>
                                 </div>
                             </div>
                         </div>
@@ -150,15 +155,15 @@ INDIA</textarea>
                         <div class="row">
                             <div class="col-md-4">
                                 <div class="mb-3">
-                                    <label asp-for="Price" class="form-label">Price (INR)</label>
-                                    <input asp-for="Price" type="number" step="0.01" class="form-control" />
+                                    <label asp-for="Price" class="form-label">Price (INR) <span class="required">*</span></label>
+                                    <input asp-for="Price" type="number" step="0.00" class="form-control" required/>
                                     <span asp-validation-for="Price" class="text-danger"></span>
                                 </div>
                             </div>
                             <div class="col-md-4">
                                 <div class="mb-3">
                                     <label asp-for="TaxableAmount" class="form-label">Taxable Amount (INR)</label>
-                                    <input asp-for="TaxableAmount" type="number" step="0.01" class="form-control" />
+                                    <input asp-for="TaxableAmount" type="number" step="0.00" class="form-control"/>
                                     <span asp-validation-for="TaxableAmount" class="text-danger"></span>
                                 </div>
                             </div>
@@ -240,12 +245,19 @@ INDIA</textarea>
                 </div>
             </div>
 
-            <!-- Generate Button -->
+            <!-- Generate and Preview Buttons -->
             <div class="row">
                 <div class="col-12 text-center">
                     <button type="submit" class="btn btn-primary btn-lg">Generate PDF Invoice</button>
+                    <button type="submit"
+                            formaction="@Url.Action("PreviewInvoice", "Home")"
+                            formtarget="_blank"
+                            class="btn btn-secondary btn-lg ms-2" id="previewBtn">
+                        Preview PDF
+                    </button>
                 </div>
             </div>
+
         </form>
     </div>
 
@@ -273,9 +285,88 @@ INDIA</textarea>
             document.getElementById('netAmount').textContent = netAmount.toFixed(2);
         }
 
-        document.querySelector('[name="Price"]').addEventListener('input', calculateAmounts);
-        document.querySelector('[name="TaxableAmount"]').addEventListener('input', calculateAmounts);
-        document.querySelector('[name="ReceivedAmount"]').addEventListener('input', calculateAmounts);
+        function validateFields() {
+            const price = parseFloat(document.querySelector('[name="Price"]').value) || 0;
+            const taxableAmount = parseFloat(document.querySelector('[name="TaxableAmount"]').value) || 0;
+            const receivedAmount = parseFloat(document.querySelector('[name="ReceivedAmount"]').value) || 0;
+
+            // Calculate net amount for validation
+            const taxAmount = (taxableAmount * 18) / 100;
+            const netAmount = taxableAmount + taxAmount;
+
+            let isValid = true;
+
+            // Clear previous custom error messages
+            clearCustomErrors();
+
+            // Validate Taxable Amount vs Price
+            if (taxableAmount > price && price > 0) {
+                showCustomError('TaxableAmount', 'Taxable amount cannot be greater than the price.');
+                isValid = false;
+            }
+
+            // Validate Received Amount vs Net Amount
+            if (receivedAmount > netAmount && netAmount > 0) {
+                showCustomError('ReceivedAmount', `Received amount cannot be greater than the net amount (₹${netAmount.toFixed(2)}).`);
+                isValid = false;
+            }
+
+            // Enable/disable submit button
+            const submitButton = document.querySelector('button[type="submit"]');
+            if (submitButton) {
+                submitButton.disabled = !isValid;
+                if (!isValid) {
+                    submitButton.classList.add('btn-secondary');
+                    submitButton.classList.remove('btn-primary');
+                } else {
+                    submitButton.classList.add('btn-primary');
+                    submitButton.classList.remove('btn-secondary');
+                }
+            }
+
+            return isValid;
+        }
+
+        function showCustomError(fieldName, message) {
+            const field = document.querySelector(`[name="${fieldName}"]`);
+            if (field) {
+                // Create error span if it doesn't exist
+                let errorSpan = field.parentNode.querySelector('.custom-validation-error');
+                if (!errorSpan) {
+                    errorSpan = document.createElement('span');
+                    errorSpan.className = 'text-danger custom-validation-error';
+                    field.parentNode.appendChild(errorSpan);
+                }
+                errorSpan.textContent = message;
+                field.classList.add('is-invalid');
+            }
+        }
+
+        function clearCustomErrors() {
+            // Remove all custom error messages
+            const errorSpans = document.querySelectorAll('.custom-validation-error');
+            errorSpans.forEach(span => span.remove());
+
+            // Remove invalid class from fields
+            const invalidFields = document.querySelectorAll('.is-invalid');
+            invalidFields.forEach(field => field.classList.remove('is-invalid'));
+        }
+
+        // Event listeners
+        document.querySelector('[name="Price"]').addEventListener('input', function () {
+            calculateAmounts();
+            validateFields();
+        });
+
+        document.querySelector('[name="TaxableAmount"]').addEventListener('input', function () {
+            calculateAmounts();
+            validateFields();
+        });
+
+        document.querySelector('[name="ReceivedAmount"]').addEventListener('input', function () {
+            calculateAmounts();
+            validateFields();
+        });
 
         const refundableToggle = document.getElementById('refundableToggle');
         const refundableLabel = document.getElementById('refundableLabel');
@@ -298,7 +389,19 @@ INDIA</textarea>
             refundableLabel.className = 'form-check-label text-danger';
         }
 
+        // Initial calculations and validation
         calculateAmounts();
+        validateFields();
+
+        // Prevent opening new tab if form is invalid on Preview button
+        document.getElementById('previewBtn').addEventListener('click', function (e) {
+            const form = e.target.form;
+            if (!form.checkValidity()) {
+                e.preventDefault();
+                form.reportValidity();
+            }
+        });
+
     </script>
 </body>
 </html>
