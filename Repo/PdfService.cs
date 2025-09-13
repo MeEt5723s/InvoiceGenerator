@@ -316,15 +316,15 @@ namespace InvoiceGen.Repo
             // Conditional disclaimer section HTML
             string disclaimerSection = !string.IsNullOrWhiteSpace(invoice.Disclaimer)
                 ? $@"
-        <div class='disclaimer'>
-            <h4>Disclaimer:</h4>
-            <p>{invoice.Disclaimer}</p>
-            <p><strong>{invoice.RefundableStatus}</strong></p>
-        </div>"
+    <div class='disclaimer'>
+        <h4>Disclaimer:</h4>
+        <p>{invoice.Disclaimer}</p>
+        <p><strong>{invoice.RefundableStatus}</strong></p>
+    </div>"
                 : $@"
-        <div class='disclaimer'>
-            <p><strong>{invoice.RefundableStatus}</strong></p>
-        </div>";
+    <div class='disclaimer'>
+        <p><strong>{invoice.RefundableStatus}</strong></p>
+    </div>";
 
             return $@"
 <!DOCTYPE html>
@@ -419,6 +419,10 @@ namespace InvoiceGen.Repo
             text-align:left;
             white-space: normal;
         }}
+        .services-table .service-description {{
+            word-break: break-word;
+            max-width: 150px;
+        }}
         .totals-table {{
             width: 45%;
             float: right;
@@ -434,10 +438,12 @@ namespace InvoiceGen.Repo
             font-weight: bold;
         }}
         .disclaimer {{
-            margin-top: 54px;
+            margin-top: 60px;
             font-size: 13px;
             clear: both;
             width: 100%;
+            border-top: 2px solid #888;
+            padding-top: 25px;
         }}
         .disclaimer h4 {{
             margin-top: 0;
@@ -464,7 +470,7 @@ namespace InvoiceGen.Repo
         <div class='bill-company-section'>
             <div class='bill-to'>
                 <h3>Bill To:</h3>
-                <p><strong>{invoice.BillToName}</strong></p>
+                <p>{invoice.BillToName}</p>
                 <p>{invoice.BillToAddress}</p>
                 {cityState}
                 {country}
@@ -492,7 +498,7 @@ namespace InvoiceGen.Repo
                 </thead>
                 <tbody>
                     <tr>
-                        <td>{invoice.ServiceDescription}</td>
+                        <td class='service-description'>{System.Web.HttpUtility.HtmlEncode(invoice.FinalServiceDescription)}</td>
                         <td>INR {invoice.Price:N2}</td>
                         <td>INR {invoice.TaxableAmount:N2}</td>
                         <td>{invoice.TaxRate:N1}%</td>
@@ -528,6 +534,8 @@ namespace InvoiceGen.Repo
                 <td><strong>INR {invoice.DueAmount:N2}</strong></td>
             </tr>
         </table>
+
+        <div style='height: 20px; clear: both;'></div>
 
         {disclaimerSection}
 

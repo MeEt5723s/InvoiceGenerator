@@ -21,27 +21,48 @@ namespace InvoiceGen.Models
         public string? BillToCity { get; set; }
         public string? BillToState { get; set; }
         public string? BillToCountry { get; set; }
-        public string BillToContact { get; set; }
+        public string BillToContact { get; set; } = string.Empty;
         public string BillToEmail { get; set; } = string.Empty;
 
         // Company Details - These are now constants
-        public string CompanyName => "Anil Associates T/As Aussizz Group";
-        public string CompanyAddress => "1st Floor, 105 Atlantic,\nNear Gordia Circle,\nVADODARA-390020,\nGUJARAT\nINDIA";
+        public string CompanyName => "Ami Associates T/As Aussizz Group";
+        public string CompanyAddress => "1st Floor, 105 Atlantis,\nNear Genda Circle,\nVADODARA-390020,\nGUJARAT\nINDIA";
         public string GSTNumber => "24GOIPS7235K1ZC";
 
-        // Service Details - This is now a constant
+        // Service Details - Modified to support custom service description
         [Required]
         public string ServiceDescription { get; set; } = string.Empty;
+
+        // New property for custom service description when "Other" is selected
+        public string? CustomServiceDescription { get; set; }
 
         // And optionally a static list of possible services (or populate dynamically)
         public static List<string> AvailableServices => new List<string>
         {
-            "Visitor Visa - Australia (600) Tourist Stream",
-            "Business Visa - Australia (subclass 600)",
-            "Tourist Visa - Canada",
-            "Student Visa - UK",
-            "Work Visa - USA"
+            "IELTS coaching",
+            "PTE coaching",
+            "Partner Temporary Provision Visa (Sub Class 820/320)",
+            "Skilled Independent Visa (Sub Class - 189)",
+            "Skilled Nominated Visa (Sub Class - 190)",
+            "Skilled Work Regional (Provisional) Visa (Sub Class - 491)",
+            "Student Visa (Sub Class - 500)",
+            "UK Dependent Visa",
+            "Canada Dependent Visa",
+            "Dependent Visa",
+            "Visitor Visa",
+            "Other"
         };
+
+        // Property to get the final service description (either selected or custom)
+        public string FinalServiceDescription
+        {
+            get
+            {
+                return ServiceDescription == "Other" && !string.IsNullOrWhiteSpace(CustomServiceDescription)
+                    ? CustomServiceDescription
+                    : ServiceDescription;
+            }
+        }
 
         [Required]
         [Range(0.01, double.MaxValue, ErrorMessage = "Price must be greater than 0")]
@@ -88,6 +109,14 @@ namespace InvoiceGen.Models
                 results.Add(new ValidationResult(
                     $"Received amount cannot be greater than the net amount (₹{NetAmount:N2}).",
                     new[] { nameof(ReceivedAmount) }));
+            }
+
+            // Validate custom service description when "Other" is selected
+            if (ServiceDescription == "Other" && string.IsNullOrWhiteSpace(CustomServiceDescription))
+            {
+                results.Add(new ValidationResult(
+                    "Custom service description is required when 'Other' is selected.",
+                    new[] { nameof(CustomServiceDescription) }));
             }
 
             return results;
