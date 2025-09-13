@@ -41,7 +41,7 @@ namespace InvoiceGen.Models
         {
             "IELTS coaching",
             "PTE coaching",
-            "Partner Temporary Provision Visa (Sub Class 820/320)",
+            "Partner Temporary Provisional Visa (Sub Class 820/320)",
             "Skilled Independent Visa (Sub Class - 189)",
             "Skilled Nominated Visa (Sub Class - 190)",
             "Skilled Work Regional (Provisional) Visa (Sub Class - 491)",
