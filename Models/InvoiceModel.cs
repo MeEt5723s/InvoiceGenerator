@@ -104,7 +104,7 @@ namespace InvoiceGen.Models
             }
 
             // Validate that Received Amount is not greater than Net Amount
-            if (ReceivedAmount > NetAmount)
+            if (ReceivedAmount > NetAmount + 0.001m)
             {
                 results.Add(new ValidationResult(
                     $"Received amount cannot be greater than the net amount (₹{NetAmount:N2}).",
