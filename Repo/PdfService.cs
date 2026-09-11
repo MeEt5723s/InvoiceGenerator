@@ -299,6 +299,12 @@ namespace InvoiceGen.Repo
                 ? $"<img src='data:image/jpeg;base64,{logoBase64}' alt='Company Logo' style='width: 90px; height: 90px;' />"
                 : "<div style='width: 90px; height: 90px; border: 2px solid #000; border-radius: 50%; text-align: center; line-height: 86px; font-weight: bold; font-size: 24px;'>🦘</div>";
 
+            // If no invoice number was provided, leave a blank underlined space
+            // on the printed PDF so one can be written in by hand.
+            var invoiceNumberDisplay = string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
+                ? "<span style='display:inline-block; width: 140px;'>&nbsp;</span>"
+                : invoice.InvoiceNumber;
+
             // Conditional city+state HTML
             string cityState = "";
             if (!string.IsNullOrWhiteSpace(invoice.BillToCity) || !string.IsNullOrWhiteSpace(invoice.BillToState))
@@ -367,11 +373,15 @@ namespace InvoiceGen.Repo
         }}
         .invoice-info {{
             flex: 1 1 auto;
-            text-align: right;
             margin-top: 10px;
             font-size: 13px;
+            display: flex;
+            justify-content: flex-end;
         }}
-        .invoice-info p {{
+        .invoice-info-inner {{
+            text-align: left;
+        }}
+        .invoice-info-inner p {{
             margin: 0 0 6px 0;
         }}
         .bill-company-section {{
@@ -463,8 +473,10 @@ namespace InvoiceGen.Repo
                 {logoHtml}
             </div>
             <div class='invoice-info'>
-                <p><strong>Invoice No:</strong> {invoice.InvoiceNumber}</p>
-                <p><strong>Invoice Date:</strong> {invoice.InvoiceDate:dd/MM/yyyy}</p>
+                <div class='invoice-info-inner'>
+                    <p><strong>Invoice No:</strong> {invoiceNumberDisplay}</p>
+                    <p><strong>Invoice Date:</strong> {invoice.InvoiceDate:dd/MM/yyyy}</p>
+                </div>
             </div>
         </div>
         <div class='bill-company-section'>

@@ -5,8 +5,11 @@ namespace InvoiceGen.Models
 {
     public class InvoiceModel : IValidatableObject
     {
-        [Required]
-        public string InvoiceNumber { get; set; } = string.Empty;
+        // Optional - left blank on the PDF/filename if not provided.
+        // Must be string? (nullable) - with <Nullable>enable</Nullable> in the csproj,
+        // ASP.NET Core implicitly treats a non-nullable "string" property as required,
+        // even with no [Required] attribute present.
+        public string? InvoiceNumber { get; set; }
 
         [Required]
         public DateTime InvoiceDate { get; set; } = DateTime.Now;
