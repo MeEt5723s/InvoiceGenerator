@@ -41,14 +41,13 @@ public class HomeController : Controller
         if (ModelState.IsValid)
         {
             var pdf = _pdfService.GenerateInvoicePdf(model);
-            string defaultFileName = string.IsNullOrWhiteSpace(model.InvoiceNumber)
-                ? "Invoice.pdf"
-                : $"Invoice-{model.InvoiceNumber}.pdf";
-            var fileName = !string.IsNullOrWhiteSpace(customFileName) ? customFileName : defaultFileName;
-            if (!fileName.EndsWith(".pdf", System.StringComparison.OrdinalIgnoreCase))
-            {
-                fileName += ".pdf";
-            }
+
+            // Default: "INV0072-Deepak_Soni". A name typed by the user wins, but is sanitized.
+            var fileName = !string.IsNullOrWhiteSpace(customFileName)
+                ? SanitizeForFileName(System.IO.Path.GetFileNameWithoutExtension(customFileName))
+                : BuildPdfBaseName(model.InvoiceNumber, model.BillToName);
+            fileName += ".pdf";
+
             // Return PDF for download
             return File(pdf, "application/pdf", fileName);
         }
@@ -270,9 +269,8 @@ public class HomeController : Controller
 
                 var pdf = _pdfService.GenerateInvoicePdf(invoice);
 
-                var baseName = string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
-                    ? $"Invoice-{SanitizeForFileName(invoice.BillToName)}"
-                    : $"Invoice-{invoice.InvoiceNumber}";
+                // "INV0072/2026-27" + "Deepak Soni" -> "INV0072-Deepak_Soni"
+                var baseName = BuildPdfBaseName(invoice.InvoiceNumber, invoice.BillToName);
                 var entryName = baseName + ".pdf";
                 int suffix = 1;
                 while (!usedNames.Add(entryName))
@@ -296,5 +294,32 @@ public class HomeController : Controller
         var invalidChars = System.IO.Path.GetInvalidFileNameChars();
         var cleaned = new string(input.Where(c => !invalidChars.Contains(c)).ToArray()).Trim();
         return string.IsNullOrWhiteSpace(cleaned) ? "Invoice" : cleaned;
+    }
+
+    // "INV0072/2026-27" + "Deepak Soni"  ->  "INV0072-Deepak_Soni"
+    // Only the part of the invoice number before the first slash is used.
+    private static string BuildPdfBaseName(string? invoiceNumber, string? customerName)
+    {
+        var invalid = System.IO.Path.GetInvalidFileNameChars()
+            .Concat(new[] { '/', '\\' })
+            .ToHashSet();
+
+        string Clean(string s) =>
+            new string(s.Select(c => invalid.Contains(c) ? '_' : c).ToArray());
+
+        // Keep only what comes before the first slash
+        var numberPart = (invoiceNumber ?? "").Split('/', '\\')[0].Trim();
+        numberPart = Clean(numberPart);
+
+        // Spaces in the name become underscores
+        var nameParts = (customerName ?? "")
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var namePart = Clean(string.Join("_", nameParts));
+
+        var parts = new[] { numberPart, namePart }
+            .Where(p => !string.IsNullOrWhiteSpace(p));
+
+        var result = string.Join("-", parts);
+        return string.IsNullOrWhiteSpace(result) ? "Invoice" : result;
     }
 }
