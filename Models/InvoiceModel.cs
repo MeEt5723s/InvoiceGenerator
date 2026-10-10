@@ -27,6 +27,10 @@ namespace InvoiceGen.Models
         public string BillToContact { get; set; } = string.Empty;
         public string BillToEmail { get; set; } = string.Empty;
 
+        // Optional customer GST No - shown on the PDF only when provided.
+        // Nullable so ASP.NET Core doesn't treat it as required.
+        public string? BillToGST { get; set; }
+
         // Company Details - These are now constants
         public string CompanyName => "Ami Associates T/As Aussizz Group";
         public string CompanyAddress => "1st Floor, 105 Atlantis,\nNear Genda Circle,\nVADODARA-390020,\nGUJARAT\nINDIA";
@@ -44,7 +48,7 @@ namespace InvoiceGen.Models
         {
             "IELTS coaching",
             "PTE coaching",
-            "Partner Temporary Provisional Visa (Sub Class 820/320)",
+            "Partner Temporary Provisional Visa (Sub Class 820/320)",
             "Skilled Independent Visa (Sub Class - 189)",
             "Skilled Nominated Visa (Sub Class - 190)",
             "Skilled Work Regional (Provisional) Visa (Sub Class - 491)",

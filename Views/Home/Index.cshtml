@@ -177,6 +177,10 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="mb-3">
+                            <label asp-for="BillToGST" class="form-label">GST No</label>
+                            <input asp-for="BillToGST" class="form-control" />
+                        </div>
                     </div>
                 </div>
 
@@ -576,12 +580,12 @@ INDIA</textarea>
             invoices.forEach((inv, idx) => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                                            <td>${idx + 1}</td>
-                                            <td>${inv.billToName ?? ''}</td>
-                                            <td>${(inv.serviceDescription === 'Other' ? inv.customServiceDescription : inv.serviceDescription) ?? ''}</td>
-                                            <td>${(inv.price ?? 0).toFixed(2)}</td>
-                                            <td><button type="button" class="btn btn-sm btn-outline-secondary use-row-btn" data-idx="${idx}">Fill Form</button></td>
-                                        `;
+                                                    <td>${idx + 1}</td>
+                                                    <td>${inv.billToName ?? ''}</td>
+                                                    <td>${(inv.serviceDescription === 'Other' ? inv.customServiceDescription : inv.serviceDescription) ?? ''}</td>
+                                                    <td>${(inv.price ?? 0).toFixed(2)}</td>
+                                                    <td><button type="button" class="btn btn-sm btn-outline-secondary use-row-btn" data-idx="${idx}">Fill Form</button></td>
+                                                `;
                 tbody.appendChild(tr);
             });
 
@@ -617,6 +621,7 @@ INDIA</textarea>
             setField('BillToCountry', inv.billToCountry);
             setField('BillToContact', inv.billToContact);
             setField('BillToEmail', inv.billToEmail);
+            setField('BillToGST', inv.billToGST);
 
             const serviceDropdown = document.getElementById('serviceDropdown');
             if (serviceDropdown) serviceDropdown.value = inv.serviceDescription ?? '';

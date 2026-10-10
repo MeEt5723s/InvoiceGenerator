@@ -97,7 +97,8 @@ public class HomeController : Controller
         "Taxable Amount",
         "Received Amount",
         "Disclaimer Text",
-        "Refundable (Yes/No)"
+        "Refundable (Yes/No)",
+        "GST No"
     };
 
     [HttpGet]
@@ -129,6 +130,7 @@ public class HomeController : Controller
         ws.Cell(2, 14).Value = 0;
         ws.Cell(2, 15).Value = "";
         ws.Cell(2, 16).Value = "No";
+        ws.Cell(2, 17).Value = "";
 
         // Data-validation dropdown on the Service Description column so people
         // don't mistype a value that doesn't match InvoiceModel.AvailableServices.
@@ -202,7 +204,9 @@ public class HomeController : Controller
                     ServiceDescription = GetStr(10),
                     CustomServiceDescription = GetStr(11),
                     Disclaimer = GetStr(15),
-                    IsRefundable = GetStr(16).Equals("Yes", StringComparison.OrdinalIgnoreCase)
+                    IsRefundable = GetStr(16).Equals("Yes", StringComparison.OrdinalIgnoreCase),
+                    // Optional - stays empty (null) if the cell is blank.
+                    BillToGST = string.IsNullOrWhiteSpace(GetStr(17)) ? null : GetStr(17)
                 };
 
                 // Invoice Date (column 2)
