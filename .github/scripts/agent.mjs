@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const env = (k, d = '') => process.env[k] || d;
-const MODEL = env('GEMINI_MODEL', 'gemini-2.5-flash');
+const MODEL = env('GEMINI_MODEL', 'gemini-3.8-flash');
 const KEY = env('GEMINI_API_KEY');
 const REPO = env('GITHUB_REPOSITORY');
 const ISSUE = env('ISSUE_NUMBER');
