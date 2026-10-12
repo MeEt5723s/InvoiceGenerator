@@ -93,7 +93,7 @@ jobs:
           summary="$(cat "$SUMMARY_FILE")"
           gh issue comment "$ISSUE_NUMBER" --body "Question for owner: $summary"
           gh issue edit "$ISSUE_NUMBER" --remove-label working --add-label awaiting-feedback
-          .github/scripts/notify.sh "$(printf '%s\n\nJust reply to this message with your answer.' "$summary")"
+          bash .github/scripts/notify.sh "$(printf '%s\n\nJust reply to this message with your answer.' "$summary")"
 
       - name: Commit and push to staging
         id: push
@@ -106,7 +106,7 @@ jobs:
 
       - name: Wait for the staging site to deploy this commit
         if: steps.agent.outputs.changed == 'true'
-        run: .github/scripts/wait-render.sh "$STAGING_SERVICE_ID" "${{ steps.push.outputs.sha }}" 25
+        run: bash .github/scripts/wait-render.sh "$STAGING_SERVICE_ID" "${{ steps.push.outputs.sha }}" 25
 
       - name: Send staging link to uncle
         if: steps.agent.outputs.changed == 'true'
@@ -115,14 +115,14 @@ jobs:
           gh issue comment "$ISSUE_NUMBER" --body "Staged: $summary"
           gh issue edit "$ISSUE_NUMBER" --remove-label working --add-label awaiting-feedback --add-label staged
           msg="$(printf '✅ Ready to try!\n\n%s\n\nTest it here: %s\n(The first load can take about a minute.)\n\nIf it looks right tap 👍. If not, tap 👎 and tell me what to change.' "$summary" "$STAGING_URL")"
-          .github/scripts/notify.sh "$msg" "$ISSUE_NUMBER"
+          bash .github/scripts/notify.sh "$msg" "$ISSUE_NUMBER"
 
       - name: Report failure
         if: failure() || cancelled()
         run: |
           gh issue comment "$ISSUE_NUMBER" --body "Build failed. Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" || true
           gh issue edit "$ISSUE_NUMBER" --remove-label working --add-label needs-developer || true
-          .github/scripts/notify.sh "Sorry, I couldn't make that change. Nothing on the live site was touched. You can send /cancel and try describing it a bit differently."
+          bash .github/scripts/notify.sh "Sorry, I couldn't make that change. Nothing on the live site was touched. You can send /cancel and try describing it a bit differently."
           if [ -n "$DEVELOPER_CHAT_ID" ]; then
-            CHAT_ID="$DEVELOPER_CHAT_ID" .github/scripts/notify.sh "Invoice bot failed on request #$ISSUE_NUMBER: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            CHAT_ID="$DEVELOPER_CHAT_ID" bash .github/scripts/notify.sh "Invoice bot failed on request #$ISSUE_NUMBER: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           fi
