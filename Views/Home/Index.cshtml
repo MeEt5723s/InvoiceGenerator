@@ -1,4 +1,4 @@
-﻿@model InvoiceGen.Models.InvoiceModel
+@model InvoiceGen.Models.InvoiceModel
 
 @{
     ViewData["Title"] = "Invoice Generator";
@@ -55,7 +55,7 @@
     <div class="container-fluid mt-4">
         <div class="row">
             <div class="col-12">
-                <h2 class="text-center mb-4">Invoice Generator</h2>
+                <h1 class="text-center mb-4">Invoice Generator</h1>
             </div>
         </div>
 
@@ -593,7 +593,7 @@ INDIA</textarea>
                 btn.addEventListener('click', () => fillFormFromRow(importedInvoices[parseInt(btn.dataset.idx)]));
             });
 
-            document.getElementById('importedCount').textContent =
+            document.getElementById('importedCount').textContent = 
                 `${invoices.length} invoice${invoices.length === 1 ? '' : 's'} ready`;
             document.getElementById('importResults').style.display = invoices.length ? 'block' : 'none';
 
