@@ -55,8 +55,8 @@ namespace InvoiceGen.Repo
                 ? $"<p>{invoice.BillToCountry}</p>"
                 : "";
 
-            // Customer GST No - temporarily removed
-            string customerGst = "";
+            // Customer GST No - displayed with value or blank space if empty
+            string customerGst = $"<p><strong>GST No:</strong> {invoice.BillToGST}</p>";
 
             // Conditional disclaimer section HTML
             string disclaimerSection = !string.IsNullOrWhiteSpace(invoice.Disclaimer)
