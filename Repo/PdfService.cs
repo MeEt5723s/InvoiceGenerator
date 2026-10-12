@@ -1,4 +1,4 @@
-﻿using InvoiceGen.Models;
+using InvoiceGen.Models;
 using iText.Html2pdf;
 using iText.Kernel.Pdf;
 
@@ -55,9 +55,8 @@ namespace InvoiceGen.Repo
                 ? $"<p>{invoice.BillToCountry}</p>"
                 : "";
 
-            // Customer GST No - label is always shown; value is blank if not provided
-            string customerGst =
-                $"<p><strong>GST No:</strong> {System.Web.HttpUtility.HtmlEncode(invoice.BillToGST ?? string.Empty)}&nbsp;</p>";
+            // Customer GST No - temporarily removed
+            string customerGst = "";
 
             // Conditional disclaimer section HTML
             string disclaimerSection = !string.IsNullOrWhiteSpace(invoice.Disclaimer)
