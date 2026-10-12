@@ -1,0 +1,67 @@
+name: Publish approved change
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number of the approved request'
+        required: true
+        type: string
+
+concurrency:
+  group: invoice-bot
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ISSUE_NUMBER: ${{ inputs.issue_number }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      CHAT_ID: ${{ vars.ALLOWED_USER_ID }}
+      DEVELOPER_CHAT_ID: ${{ vars.DEVELOPER_CHAT_ID }}
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      PROD_SERVICE_ID: ${{ vars.PROD_SERVICE_ID }}
+      PROD_URL: ${{ vars.PROD_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Merge staging into main
+        id: merge
+        run: |
+          git config user.name "invoice-bot"
+          git config user.email "invoice-bot@users.noreply.github.com"
+          git fetch origin
+          git checkout -B main origin/main
+          title="$(gh issue view "$ISSUE_NUMBER" --json title -q .title | cut -c1-80)"
+          # --no-ff always creates a "Publish:" commit, which /undo relies on.
+          git merge --no-ff -m "Publish: $title (request #$ISSUE_NUMBER)" origin/staging
+          git push origin main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for the live site to deploy
+        run: .github/scripts/wait-render.sh "$PROD_SERVICE_ID" "${{ steps.merge.outputs.sha }}" 25
+
+      - name: Tell uncle it is live and close the request
+        run: |
+          gh issue edit "$ISSUE_NUMBER" --remove-label working --remove-label awaiting-feedback --remove-label staged || true
+          gh issue close "$ISSUE_NUMBER" --reason completed
+          .github/scripts/notify.sh "$(printf "🎉 It's live! %s\n\nSend me another request any time. If something looks wrong, send /undo." "$PROD_URL")"
+
+      - name: Report failure
+        if: failure() || cancelled()
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --body "Publish failed. Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" || true
+          gh issue edit "$ISSUE_NUMBER" --remove-label working --add-label needs-developer || true
+          .github/scripts/notify.sh "Sorry, publishing ran into a problem. The live site should still show the old version. I've flagged it for the developer."
+          if [ -n "$DEVELOPER_CHAT_ID" ]; then
+            CHAT_ID="$DEVELOPER_CHAT_ID" .github/scripts/notify.sh "Invoice bot PUBLISH failed for request #$ISSUE_NUMBER: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi

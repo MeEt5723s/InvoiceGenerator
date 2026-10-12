@@ -1,0 +1,68 @@
+name: Undo last published change
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: invoice-bot
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  undo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      CHAT_ID: ${{ vars.ALLOWED_USER_ID }}
+      DEVELOPER_CHAT_ID: ${{ vars.DEVELOPER_CHAT_ID }}
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      PROD_SERVICE_ID: ${{ vars.PROD_SERVICE_ID }}
+      PROD_URL: ${{ vars.PROD_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Revert the last published change
+        id: revert
+        run: |
+          git config user.name "invoice-bot"
+          git config user.email "invoice-bot@users.noreply.github.com"
+          git fetch origin
+          git checkout -B main origin/main
+          subject="$(git log -1 --format=%s)"
+          case "$subject" in
+            Publish:*) ;;
+            *)
+              .github/scripts/notify.sh "There is no recent published change that I can undo."
+              echo "reverted=false" >> "$GITHUB_OUTPUT"
+              exit 0 ;;
+          esac
+          git revert -m 1 --no-edit HEAD
+          git push origin main
+          # Bring staging back in line with main.
+          git push --force origin main:staging
+          echo "reverted=true" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for the live site to deploy
+        if: steps.revert.outputs.reverted == 'true'
+        run: .github/scripts/wait-render.sh "$PROD_SERVICE_ID" "${{ steps.revert.outputs.sha }}" 25
+
+      - name: Tell uncle
+        if: steps.revert.outputs.reverted == 'true'
+        run: |
+          .github/scripts/notify.sh "↩️ Done. The last change was undone and the live site is back to how it was before: $PROD_URL"
+
+      - name: Report failure
+        if: failure() || cancelled()
+        run: |
+          .github/scripts/notify.sh "Sorry, I couldn't undo that. I've flagged it for the developer."
+          if [ -n "$DEVELOPER_CHAT_ID" ]; then
+            CHAT_ID="$DEVELOPER_CHAT_ID" .github/scripts/notify.sh "Invoice bot UNDO failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi

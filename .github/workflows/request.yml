@@ -1,0 +1,125 @@
+name: Build requested change
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+# One bot job at a time (request / approve / undo share this group).
+concurrency:
+  group: invoice-bot
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  build:
+    # Only uncle's requests that the Worker marked as "working".
+    # Comments written by this workflow (GITHUB_TOKEN) never trigger runs anyway.
+    if: >-
+      !github.event.issue.pull_request &&
+      contains(github.event.issue.labels.*.name, 'uncle-request') &&
+      contains(github.event.issue.labels.*.name, 'working') &&
+      github.event.comment.user.type != 'Bot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      CHAT_ID: ${{ vars.ALLOWED_USER_ID }}
+      DEVELOPER_CHAT_ID: ${{ vars.DEVELOPER_CHAT_ID }}
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      STAGING_SERVICE_ID: ${{ vars.STAGING_SERVICE_ID }}
+      STAGING_URL: ${{ vars.STAGING_URL }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+      BUILD_COMMAND: ${{ vars.BUILD_COMMAND }}
+      TEST_COMMAND: ${{ vars.TEST_COMMAND }}
+      SUMMARY_FILE: ${{ runner.temp }}/summary.txt
+      CHANGED_FILE: ${{ runner.temp }}/changed.txt
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare staging branch
+        run: |
+          git config user.name "invoice-bot"
+          git config user.email "invoice-bot@users.noreply.github.com"
+          git fetch origin
+          # New request -> start staging from main. Feedback -> keep building on staging.
+          if [ "${{ github.event_name }}" = "issues" ] || ! git ls-remote --exit-code --heads origin staging >/dev/null 2>&1; then
+            git checkout -B staging origin/main
+          else
+            git checkout -B staging origin/staging
+          fi
+
+      - name: Ensure labels exist
+        run: |
+          gh label create uncle-request    --color 0e8a16 --force
+          gh label create working          --color fbca04 --force
+          gh label create awaiting-feedback --color 1d76db --force
+          gh label create staged           --color 5319e7 --force
+          gh label create needs-developer  --color d93f0b --force
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ vars.DOTNET_VERSION || '8.0.x' }}
+
+      - name: Restore project dependencies
+        run: dotnet restore
+
+      - name: Let the agent make the change
+        id: agent
+        run: |
+          node .github/scripts/agent.mjs
+          if [ -s "$CHANGED_FILE" ]; then echo "changed=true" >> "$GITHUB_OUTPUT"; else echo "changed=false" >> "$GITHUB_OUTPUT"; fi
+
+      # The agent changed nothing: it has a question (or the change already exists).
+      - name: Ask uncle a follow-up question
+        if: steps.agent.outputs.changed == 'false'
+        run: |
+          summary="$(cat "$SUMMARY_FILE")"
+          gh issue comment "$ISSUE_NUMBER" --body "Question for owner: $summary"
+          gh issue edit "$ISSUE_NUMBER" --remove-label working --add-label awaiting-feedback
+          .github/scripts/notify.sh "$(printf '%s\n\nJust reply to this message with your answer.' "$summary")"
+
+      - name: Commit and push to staging
+        id: push
+        if: steps.agent.outputs.changed == 'true'
+        run: |
+          xargs -a "$CHANGED_FILE" -d '\n' git add --
+          git commit -m "bot: $(head -n1 "$SUMMARY_FILE" | cut -c1-100)" -m "Request #$ISSUE_NUMBER"
+          git push --force origin staging
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for the staging site to deploy this commit
+        if: steps.agent.outputs.changed == 'true'
+        run: .github/scripts/wait-render.sh "$STAGING_SERVICE_ID" "${{ steps.push.outputs.sha }}" 25
+
+      - name: Send staging link to uncle
+        if: steps.agent.outputs.changed == 'true'
+        run: |
+          summary="$(cat "$SUMMARY_FILE")"
+          gh issue comment "$ISSUE_NUMBER" --body "Staged: $summary"
+          gh issue edit "$ISSUE_NUMBER" --remove-label working --add-label awaiting-feedback --add-label staged
+          msg="$(printf '✅ Ready to try!\n\n%s\n\nTest it here: %s\n(The first load can take about a minute.)\n\nIf it looks right tap 👍. If not, tap 👎 and tell me what to change.' "$summary" "$STAGING_URL")"
+          .github/scripts/notify.sh "$msg" "$ISSUE_NUMBER"
+
+      - name: Report failure
+        if: failure() || cancelled()
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --body "Build failed. Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" || true
+          gh issue edit "$ISSUE_NUMBER" --remove-label working --add-label needs-developer || true
+          .github/scripts/notify.sh "Sorry, I couldn't make that change. Nothing on the live site was touched. You can send /cancel and try describing it a bit differently."
+          if [ -n "$DEVELOPER_CHAT_ID" ]; then
+            CHAT_ID="$DEVELOPER_CHAT_ID" .github/scripts/notify.sh "Invoice bot failed on request #$ISSUE_NUMBER: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi
