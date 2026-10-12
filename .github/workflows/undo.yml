@@ -39,7 +39,7 @@ jobs:
           case "$subject" in
             Publish:*) ;;
             *)
-              .github/scripts/notify.sh "There is no recent published change that I can undo."
+              bash .github/scripts/notify.sh "There is no recent published change that I can undo."
               echo "reverted=false" >> "$GITHUB_OUTPUT"
               exit 0 ;;
           esac
@@ -52,17 +52,17 @@ jobs:
 
       - name: Wait for the live site to deploy
         if: steps.revert.outputs.reverted == 'true'
-        run: .github/scripts/wait-render.sh "$PROD_SERVICE_ID" "${{ steps.revert.outputs.sha }}" 25
+        run: bash .github/scripts/wait-render.sh "$PROD_SERVICE_ID" "${{ steps.revert.outputs.sha }}" 25
 
       - name: Tell uncle
         if: steps.revert.outputs.reverted == 'true'
         run: |
-          .github/scripts/notify.sh "↩️ Done. The last change was undone and the live site is back to how it was before: $PROD_URL"
+          bash .github/scripts/notify.sh "↩️ Done. The last change was undone and the live site is back to how it was before: $PROD_URL"
 
       - name: Report failure
         if: failure() || cancelled()
         run: |
-          .github/scripts/notify.sh "Sorry, I couldn't undo that. I've flagged it for the developer."
+          bash .github/scripts/notify.sh "Sorry, I couldn't undo that. I've flagged it for the developer."
           if [ -n "$DEVELOPER_CHAT_ID" ]; then
-            CHAT_ID="$DEVELOPER_CHAT_ID" .github/scripts/notify.sh "Invoice bot UNDO failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            CHAT_ID="$DEVELOPER_CHAT_ID" bash .github/scripts/notify.sh "Invoice bot UNDO failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           fi

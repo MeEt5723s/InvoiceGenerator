@@ -1,4 +1,4 @@
-﻿@model InvoiceGen.Models.InvoiceModel
+@model InvoiceGen.Models.InvoiceModel
 
 @{
     ViewData["Title"] = "Invoice Generator";
@@ -176,10 +176,6 @@
                                     <span asp-validation-for="BillToEmail" class="text-danger"></span>
                                 </div>
                             </div>
-                        </div>
-                        <div class="mb-3">
-                            <label asp-for="BillToGST" class="form-label">GST No</label>
-                            <input asp-for="BillToGST" class="form-control" />
                         </div>
                     </div>
                 </div>
@@ -553,10 +549,8 @@ INDIA</textarea>
             formData.append('excelFile', fileInput.files[0]);
 
             try {
-                const response = await fetch('@Url.Action("ImportExcel", "Home")', {
-                    method: 'POST',
-                    body: formData
-                });
+                const response = await fetch('@Url.Action("ImportExcel", "Home")',
+                    { method: 'POST', body: formData });
                 const data = await response.json();
 
                 if (!data.success) {
