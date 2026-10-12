@@ -39,9 +39,12 @@ jobs:
       GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
       BUILD_COMMAND: ${{ vars.BUILD_COMMAND }}
       TEST_COMMAND: ${{ vars.TEST_COMMAND }}
-      SUMMARY_FILE: ${{ runner.temp }}/summary.txt
-      CHANGED_FILE: ${{ runner.temp }}/changed.txt
     steps:
+      - name: Set temp file locations
+        run: |
+          echo "SUMMARY_FILE=$RUNNER_TEMP/summary.txt" >> "$GITHUB_ENV"
+          echo "CHANGED_FILE=$RUNNER_TEMP/changed.txt" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
