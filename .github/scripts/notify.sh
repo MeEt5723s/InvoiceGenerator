@@ -21,7 +21,7 @@ else
   payload=$(jq -n --arg chat "$CHAT_ID" --arg text "$text" '{chat_id: $chat, text: $text}')
 fi
 
-curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+curl -sS --retry 4 --retry-delay 3 --retry-all-errors -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
   -H 'Content-Type: application/json' -d "$payload" >/dev/null \
   || echo "::warning::Telegram notification failed"
 exit 0

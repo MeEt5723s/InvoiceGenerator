@@ -48,20 +48,21 @@ jobs:
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Wait for the live site to deploy
-        run: .github/scripts/wait-render.sh "$PROD_SERVICE_ID" "${{ steps.merge.outputs.sha }}" 25
+        run: bash .github/scripts/wait-render.sh "$PROD_SERVICE_ID" "${{ steps.merge.outputs.sha }}" 25
 
       - name: Tell uncle it is live and close the request
         run: |
-          gh issue edit "$ISSUE_NUMBER" --remove-label working --remove-label awaiting-feedback --remove-label staged || true
-          gh issue close "$ISSUE_NUMBER" --reason completed
-          .github/scripts/notify.sh "$(printf "🎉 It's live! %s\n\nSend me another request any time. If something looks wrong, send /undo." "$PROD_URL")"
+          retry() { for i in 1 2 3 4 5; do "$@" && return 0; echo "retry $i after error"; sleep $((i*6)); done; return 1; }
+          retry gh issue edit "$ISSUE_NUMBER" --remove-label working --remove-label awaiting-feedback --remove-label staged || true
+          retry gh issue close "$ISSUE_NUMBER" --reason completed
+          bash .github/scripts/notify.sh "$(printf "🎉 It's live! %s\n\nSend me another request any time. If something looks wrong, send /undo." "$PROD_URL")"
 
       - name: Report failure
         if: failure() || cancelled()
         run: |
           gh issue comment "$ISSUE_NUMBER" --body "Publish failed. Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" || true
           gh issue edit "$ISSUE_NUMBER" --remove-label working --add-label needs-developer || true
-          .github/scripts/notify.sh "Sorry, publishing ran into a problem. The live site should still show the old version. I've flagged it for the developer."
+          bash .github/scripts/notify.sh "Sorry, publishing ran into a problem. The live site should still show the old version. I've flagged it for the developer."
           if [ -n "$DEVELOPER_CHAT_ID" ]; then
-            CHAT_ID="$DEVELOPER_CHAT_ID" .github/scripts/notify.sh "Invoice bot PUBLISH failed for request #$ISSUE_NUMBER: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            CHAT_ID="$DEVELOPER_CHAT_ID" bash .github/scripts/notify.sh "Invoice bot PUBLISH failed for request #$ISSUE_NUMBER: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           fi
