@@ -25,7 +25,7 @@ jobs:
       contains(github.event.issue.labels.*.name, 'working') &&
       github.event.comment.user.type != 'Bot'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 50
     env:
       GH_TOKEN: ${{ github.token }}
       ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -45,6 +45,7 @@ jobs:
         run: |
           echo "SUMMARY_FILE=$RUNNER_TEMP/summary.txt" >> "$GITHUB_ENV"
           echo "CHANGED_FILE=$RUNNER_TEMP/changed.txt" >> "$GITHUB_ENV"
+          echo "FAILURE_FILE=$RUNNER_TEMP/failure.txt" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@v4
         with:
@@ -125,7 +126,11 @@ jobs:
         run: |
           gh issue comment "$ISSUE_NUMBER" --body "Build failed. Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" || true
           gh issue edit "$ISSUE_NUMBER" --remove-label working --add-label needs-developer || true
-          bash .github/scripts/notify.sh "Sorry, I couldn't make that change. Nothing on the live site was touched. You can send /cancel and try describing it a bit differently."
+          if [ -s "$FAILURE_FILE" ] && grep -q busy "$FAILURE_FILE"; then
+            bash .github/scripts/notify.sh "The AI service I use is very busy right now, so I couldn't make that change. Nothing on the live site was touched. Please send /cancel, then send your request again in a little while."
+          else
+            bash .github/scripts/notify.sh "Sorry, I couldn't make that change. Nothing on the live site was touched. You can send /cancel and try describing it a bit differently."
+          fi
           if [ -n "$DEVELOPER_CHAT_ID" ]; then
             CHAT_ID="$DEVELOPER_CHAT_ID" bash .github/scripts/notify.sh "Invoice bot failed on request #$ISSUE_NUMBER: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           fi

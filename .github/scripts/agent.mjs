@@ -19,6 +19,7 @@ const BUILD_CMD = env('BUILD_COMMAND', 'dotnet build --no-restore');
 const TEST_CMD = env('TEST_COMMAND', 'dotnet test tests/InvoiceGen.Tests');
 const SUMMARY_FILE = env('SUMMARY_FILE', 'agent-summary.txt');
 const CHANGED_FILE = env('CHANGED_FILE', 'agent-changed.txt');
+const FAILURE_FILE = env('FAILURE_FILE', 'agent-failure.txt');
 const MAX_ATTEMPTS = 3;
 const MAX_CONTEXT_CHARS = 350_000;
 
@@ -83,7 +84,7 @@ async function conversation() {
 // fetch that never throws: a hung or dropped connection comes back as {networkError} so the caller can retry.
 async function tryFetch(url, init) {
   try {
-    return await fetch(url, { ...init, signal: AbortSignal.timeout(180_000) });
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(150_000) });
   } catch (e) {
     return { networkError: (e && e.cause && e.cause.code) || (e && e.name) || String(e) };
   }
@@ -91,10 +92,10 @@ async function tryFetch(url, init) {
 
 async function gemini(system, user) {
   let lastErr;
-  // Google's servers get overloaded now and then (HTTP 503). Wait it out: up to 6 tries over ~4 minutes.
+  // Google's servers get overloaded now and then (HTTP 503). Wait it out: up to 8 tries over ~16 minutes.
   // After 3 failed tries, switch to GEMINI_FALLBACK_MODEL if one is configured.
-  for (let i = 0; i < 6; i++) {
-    const model = i >= 3 && FALLBACK_MODEL ? FALLBACK_MODEL : MODEL;
+  for (let i = 0; i < 8; i++) {
+    const model = i >= 3 && FALLBACK_MODEL && i % 2 === 1 ? FALLBACK_MODEL : MODEL; // alternate once the main model keeps failing
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
     const res = await tryFetch(url, {
       method: 'POST',
@@ -107,14 +108,14 @@ async function gemini(system, user) {
     });
     if (res.networkError) {
       lastErr = new Error(`Gemini request failed (${model}): ${res.networkError}`);
-      console.log(`${lastErr.message} - waiting before retry ${i + 1}/6`);
-      if (i < 5) await sleep(Math.min(10000 * 2 ** i, 90000));
+      console.log(`${lastErr.message} - waiting before retry ${i + 1}/8`);
+      if (i < 7) await sleep(Math.min(15000 * 2 ** i, 240000));
       continue;
     }
     if (res.status === 429 || res.status >= 500) {
       lastErr = new Error(`Gemini ${res.status} (${model}): ${(await res.text()).slice(0, 200)}`);
-      console.log(`${lastErr.message} - waiting before retry ${i + 1}/6`);
-      if (i < 5) await sleep(Math.min(10000 * 2 ** i, 90000));
+      console.log(`${lastErr.message} - waiting before retry ${i + 1}/8`);
+      if (i < 7) await sleep(Math.min(15000 * 2 ** i, 240000));
       continue;
     }
     if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
@@ -278,5 +279,9 @@ async function main() {
 
 main().catch((err) => {
   console.error(err);
+  // Tell the workflow whether this was Google being busy (not the request's fault).
+  try {
+    if (/^Gemini/.test(String(err && err.message))) fs.writeFileSync(FAILURE_FILE, 'busy\n');
+  } catch {}
   process.exit(1);
 });
