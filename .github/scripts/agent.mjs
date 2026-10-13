@@ -80,6 +80,15 @@ async function conversation() {
 
 // ---------------------------------------------------------------- Gemini
 
+// fetch that never throws: a hung or dropped connection comes back as {networkError} so the caller can retry.
+async function tryFetch(url, init) {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(180_000) });
+  } catch (e) {
+    return { networkError: (e && e.cause && e.cause.code) || (e && e.name) || String(e) };
+  }
+}
+
 async function gemini(system, user) {
   let lastErr;
   // Google's servers get overloaded now and then (HTTP 503). Wait it out: up to 6 tries over ~4 minutes.
@@ -87,7 +96,7 @@ async function gemini(system, user) {
   for (let i = 0; i < 6; i++) {
     const model = i >= 3 && FALLBACK_MODEL ? FALLBACK_MODEL : MODEL;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-    const res = await fetch(url, {
+    const res = await tryFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': KEY },
       body: JSON.stringify({
@@ -96,6 +105,12 @@ async function gemini(system, user) {
         generationConfig: { responseMimeType: 'application/json', temperature: 0.2, maxOutputTokens: 32768 },
       }),
     });
+    if (res.networkError) {
+      lastErr = new Error(`Gemini request failed (${model}): ${res.networkError}`);
+      console.log(`${lastErr.message} - waiting before retry ${i + 1}/6`);
+      if (i < 5) await sleep(Math.min(10000 * 2 ** i, 90000));
+      continue;
+    }
     if (res.status === 429 || res.status >= 500) {
       lastErr = new Error(`Gemini ${res.status} (${model}): ${(await res.text()).slice(0, 200)}`);
       console.log(`${lastErr.message} - waiting before retry ${i + 1}/6`);
