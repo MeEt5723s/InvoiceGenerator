@@ -37,6 +37,7 @@ jobs:
       STAGING_URL: ${{ vars.STAGING_URL }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+      GEMINI_FALLBACK_MODEL: ${{ vars.GEMINI_FALLBACK_MODEL }}
       BUILD_COMMAND: ${{ vars.BUILD_COMMAND }}
       TEST_COMMAND: ${{ vars.TEST_COMMAND }}
     steps:

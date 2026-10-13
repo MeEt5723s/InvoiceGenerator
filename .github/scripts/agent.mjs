@@ -11,6 +11,7 @@ import path from 'node:path';
 const env = (k, d = '') => process.env[k] || d;
 const MODEL = env('GEMINI_MODEL', 'gemini-3.8-flash');
 const KEY = env('GEMINI_API_KEY');
+const FALLBACK_MODEL = env('GEMINI_FALLBACK_MODEL');
 const REPO = env('GITHUB_REPOSITORY');
 const ISSUE = env('ISSUE_NUMBER');
 const GH_TOKEN = env('GH_TOKEN');
@@ -80,9 +81,12 @@ async function conversation() {
 // ---------------------------------------------------------------- Gemini
 
 async function gemini(system, user) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
   let lastErr;
-  for (let i = 0; i < 3; i++) {
+  // Google's servers get overloaded now and then (HTTP 503). Wait it out: up to 6 tries over ~4 minutes.
+  // After 3 failed tries, switch to GEMINI_FALLBACK_MODEL if one is configured.
+  for (let i = 0; i < 6; i++) {
+    const model = i >= 3 && FALLBACK_MODEL ? FALLBACK_MODEL : MODEL;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': KEY },
@@ -93,8 +97,9 @@ async function gemini(system, user) {
       }),
     });
     if (res.status === 429 || res.status >= 500) {
-      lastErr = new Error(`Gemini ${res.status}`);
-      await sleep(8000 * (i + 1));
+      lastErr = new Error(`Gemini ${res.status} (${model}): ${(await res.text()).slice(0, 200)}`);
+      console.log(`${lastErr.message} - waiting before retry ${i + 1}/6`);
+      if (i < 5) await sleep(Math.min(10000 * 2 ** i, 90000));
       continue;
     }
     if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
