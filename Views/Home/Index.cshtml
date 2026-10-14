@@ -55,7 +55,7 @@
     <div class="container-fluid mt-4">
         <div class="row">
             <div class="col-12">
-                <h1 class="text-center mb-4 display-4 fw-bold">Invoice Generator</h1>
+                <h1 class="text-center mb-4 fw-bold">Invoice Generator</h1>
             </div>
         </div>
 
@@ -639,7 +639,7 @@ INDIA</textarea>
             }
 
             // "INV0072/2026-27" + "Deepak Soni" -> "INV0072-Deepak_Soni.pdf"
-            const numberPart = (inv.invoiceNumber || '').split(/[\/]/)[0].trim();
+            const numberPart = (inv.invoiceNumber || '').split(/[/]/)[0].trim();
             const namePart = (inv.billToName || '').trim().split(/\s+/).join('_');
             const base = [numberPart, namePart].filter(Boolean).join('-').replace(/[:*?"<>|]/g, '_');
             document.getElementById('customFileName').value = base ? `${base}.pdf` : '';
