@@ -314,8 +314,8 @@ INDIA</textarea>
                 <div class="col-md-6 offset-md-3">
                     <label for="customFileName" class="form-label">PDF File Name</label>
                     <input type="text" id="customFileName" name="customFileName" class="form-control"
-                           placeholder="Leave blank to use InvoiceNo-Customer_Name.pdf" />
-                    <div class="form-text">Leave blank to name the file automatically (e.g. INV0072-Deepak_Soni.pdf), or type your own name. .pdf is appended automatically.</div>
+                           placeholder="Leave blank to use InvoiceNo-Customer Name.pdf" />
+                    <div class="form-text">Leave blank to name the file automatically (e.g. INV0072-Deepak Soni.pdf), or type your own name. .pdf is appended automatically.</div>
                 </div>
             </div>
 
@@ -638,10 +638,10 @@ INDIA</textarea>
                 refundToggle.dispatchEvent(new Event('change'));
             }
 
-            // "INV0072/2026-27" + "Deepak Soni" -> "INV0072-Deepak_Soni.pdf"
-            const numberPart = (inv.invoiceNumber || '').split(/[/]/)[0].trim();
-            const namePart = (inv.billToName || '').trim().split(/\s+/).join('_');
-            const base = [numberPart, namePart].filter(Boolean).join('-').replace(/[:*?"<>|]/g, '_');
+            // "INV0072/2026-27" + "Deepak Soni" -> "INV0072-Deepak Soni.pdf"
+            const numberPart = (inv.invoiceNumber || '').split(/[/\\]/)[0].trim().replace(/_/g, ' ');
+            const namePart = (inv.billToName || '').trim().split(/\s+/).join(' ').replace(/_/g, ' ');
+            const base = [numberPart, namePart].filter(Boolean).join('-').replace(/[:*?"<>|/\\]/g, '').replace(/_/g, ' ').trim();
             document.getElementById('customFileName').value = base ? `${base}.pdf` : '';
 
             calculateAmounts();
@@ -660,8 +660,8 @@ INDIA</textarea>
             btn.textContent = 'Generating...';
 
             try {
-                const response = await fetch('@Url.Action("GenerateAllInvoices", "Home")', {
-                    method: 'POST',
+                const response = await fetch('@Url.Action("GenerateAllInvoices", "Home")',
+                    { method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(importedInvoices)
                 });
