@@ -42,7 +42,7 @@ public class HomeController : Controller
         {
             var pdf = _pdfService.GenerateInvoicePdf(model);
 
-            // Default: "INV0072-Deepak_Soni". A name typed by the user wins, but is sanitized.
+            // Default: "INV0072-Deepak Soni". A name typed by the user wins, but is sanitized.
             var fileName = !string.IsNullOrWhiteSpace(customFileName)
                 ? SanitizeForFileName(System.IO.Path.GetFileNameWithoutExtension(customFileName))
                 : BuildPdfBaseName(model.InvoiceNumber, model.BillToName);
@@ -135,7 +135,7 @@ public class HomeController : Controller
         // Data-validation dropdown on the Service Description column so people
         // don't mistype a value that doesn't match InvoiceModel.AvailableServices.
         // Excel's inline List() string is capped at 255 characters, and our service
-        // names are long enough to blow past that — so the values go on a hidden
+        // names are long enough to blow past that  so the values go on a hidden
         // helper sheet instead, and the validation points at that range.
         var listsSheet = workbook.Worksheets.Add("Lists");
         var services = InvoiceModel.AvailableServices;
@@ -273,7 +273,7 @@ public class HomeController : Controller
 
                 var pdf = _pdfService.GenerateInvoicePdf(invoice);
 
-                // "INV0072/2026-27" + "Deepak Soni" -> "INV0072-Deepak_Soni"
+                // "INV0072/2026-27" + "Deepak Soni" -> "INV0072-Deepak Soni"
                 var baseName = BuildPdfBaseName(invoice.InvoiceNumber, invoice.BillToName);
                 var entryName = baseName + ".pdf";
                 int suffix = 1;
@@ -296,11 +296,11 @@ public class HomeController : Controller
     {
         if (string.IsNullOrWhiteSpace(input)) return "Invoice";
         var invalidChars = System.IO.Path.GetInvalidFileNameChars();
-        var cleaned = new string(input.Where(c => !invalidChars.Contains(c)).ToArray()).Trim();
+        var cleaned = new string(input.Replace('_', ' ').Where(c => !invalidChars.Contains(c)).ToArray()).Trim();
         return string.IsNullOrWhiteSpace(cleaned) ? "Invoice" : cleaned;
     }
 
-    // "INV0072/2026-27" + "Deepak Soni"  ->  "INV0072-Deepak_Soni"
+    // "INV0072/2026-27" + "Deepak Soni"  ->  "INV0072-Deepak Soni"
     // Only the part of the invoice number before the first slash is used.
     private static string BuildPdfBaseName(string? invoiceNumber, string? customerName)
     {
@@ -309,16 +309,16 @@ public class HomeController : Controller
             .ToHashSet();
 
         string Clean(string s) =>
-            new string(s.Select(c => invalid.Contains(c) ? '_' : c).ToArray());
+            new string(s.Replace('_', ' ').Where(c => !invalid.Contains(c)).ToArray()).Trim();
 
         // Keep only what comes before the first slash
         var numberPart = (invoiceNumber ?? "").Split('/', '\\')[0].Trim();
         numberPart = Clean(numberPart);
 
-        // Spaces in the name become underscores
+        // Preserve spaces in the name
         var nameParts = (customerName ?? "")
             .Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var namePart = Clean(string.Join("_", nameParts));
+        var namePart = Clean(string.Join(" ", nameParts));
 
         var parts = new[] { numberPart, namePart }
             .Where(p => !string.IsNullOrWhiteSpace(p));
