@@ -90,12 +90,25 @@ async function tryFetch(url, init) {
   }
 }
 
+function parseJson(text) {
+  const t = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  try {
+    return JSON.parse(t);
+  } catch {
+    const i = t.indexOf('{');
+    const j = t.lastIndexOf('}');
+    if (i >= 0 && j > i) return JSON.parse(t.slice(i, j + 1));
+    throw new Error('not json');
+  }
+}
+
 async function gemini(system, user) {
   let lastErr;
-  // Google's servers get overloaded now and then (HTTP 503). Wait it out: up to 8 tries over ~16 minutes.
-  // After 3 failed tries, switch to GEMINI_FALLBACK_MODEL if one is configured.
+  let useFallback = false; // set when the main model gave an unusable answer
+  // Up to 8 tries. Overloaded (503) -> wait and retry. Unusable answer -> switch model right away.
   for (let i = 0; i < 8; i++) {
-    const model = i >= 3 && FALLBACK_MODEL && i % 2 === 1 ? FALLBACK_MODEL : MODEL; // alternate once the main model keeps failing
+    const model =
+      FALLBACK_MODEL && (useFallback || (i >= 3 && i % 2 === 1)) ? FALLBACK_MODEL : MODEL;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
     const res = await tryFetch(url, {
       method: 'POST',
@@ -106,27 +119,32 @@ async function gemini(system, user) {
         generationConfig: { responseMimeType: 'application/json', temperature: 0.2, maxOutputTokens: 32768 },
       }),
     });
-    if (res.networkError) {
-      lastErr = new Error(`Gemini request failed (${model}): ${res.networkError}`);
+    if (res.networkError || res.status === 429 || res.status >= 500) {
+      lastErr = new Error(
+        res.networkError
+          ? `Gemini request failed (${model}): ${res.networkError}`
+          : `Gemini ${res.status} (${model}): ${(await res.text()).slice(0, 200)}`
+      );
       console.log(`${lastErr.message} - waiting before retry ${i + 1}/8`);
-      if (i < 7) await sleep(Math.min(15000 * 2 ** i, 240000));
+      if (model === FALLBACK_MODEL) useFallback = false; // give the main model another go
+      if (i < 7) await sleep(Math.min(15000 * 2 ** i, 120000));
       continue;
     }
-    if (res.status === 429 || res.status >= 500) {
-      lastErr = new Error(`Gemini ${res.status} (${model}): ${(await res.text()).slice(0, 200)}`);
-      console.log(`${lastErr.message} - waiting before retry ${i + 1}/8`);
-      if (i < 7) await sleep(Math.min(15000 * 2 ** i, 240000));
-      continue;
-    }
-    if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
+    if (!res.ok) throw new Error(`Gemini ${res.status} (${model}): ${await res.text()}`);
     const data = await res.json();
-    const text = (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
-    if (!text) throw new Error('Gemini returned no text (blocked or empty)');
+    const cand = data?.candidates?.[0];
+    const text = (cand?.content?.parts || []).map((p) => p.text || '').join('');
+    let parsed;
     try {
-      return JSON.parse(text);
-    } catch (e) {
-      lastErr = new Error('Gemini returned invalid JSON (output may have been cut off)');
+      parsed = parseJson(text);
+    } catch {
+      lastErr = new Error(`Gemini answer unusable (${model}): finishReason=${cand?.finishReason || data?.promptFeedback?.blockReason || 'unknown'}, length=${text.length}`);
+      console.log(`${lastErr.message}\nSTART: ${text.slice(0, 200)}\nEND: ${text.slice(-200)}\n - retrying ${i + 1}/8`);
+      if (model === MODEL && FALLBACK_MODEL) useFallback = true;
+      await sleep(5000);
+      continue;
     }
+    return parsed;
   }
   throw lastErr || new Error('Gemini failed');
 }
