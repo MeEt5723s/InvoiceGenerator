@@ -31,11 +31,13 @@ Rules:
 - NEVER change tax / GST calculation, rounding or totals logic unless the request explicitly asks for it.
 - Keep the existing code style and structure. Do not add new dependencies unless unavoidable.
 - If the request is unclear, impossible, or risky, change nothing: return "files": [] and put ONE short, simple question in "summary".
-- For every file you change or create, return its COMPLETE new content (not a diff, not a fragment).
+- To change an EXISTING file, return small edits: {"path", "find", "replace"}. "find" must be copied EXACTLY (same spaces, same line breaks) from the current file and must appear exactly once in it, so include enough neighbouring lines to make it unique. Keep each "find" as short as possible. Do NOT return whole existing files.
+- To create a NEW file, return it under "newFiles" with its complete content.
 - Never touch .github/, tests/, .env files, or lock files. If a request would require changing the tax or totals maths, change nothing and ask.
 - "summary": 1-2 plain sentences for a non-technical person describing what changed visually or in behaviour. No code terms.
 
-Reply with JSON only: {"summary": string, "files": [{"path": string, "content": string}]}`;
+Reply with JSON only: {"summary": string, "edits": [{"path": string, "find": string, "replace": string}], "newFiles": [{"path": string, "content": string}]}
+If nothing should change, use empty "edits" and "newFiles".`;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const sh = (cmd) => execSync(cmd, { encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 }).trim();
@@ -90,15 +92,46 @@ async function tryFetch(url, init) {
   }
 }
 
+// Fix the usual mistakes models make inside JSON strings: raw newlines/tabs and invalid backslash escapes.
+function repairJson(t) {
+  let out = '';
+  let inStr = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (!inStr) {
+      if (c === '"') inStr = true;
+      out += c;
+      continue;
+    }
+    if (c === '"') { inStr = false; out += c; continue; }
+    if (c === '\\') {
+      const n = t[i + 1];
+      if (n && '"\\/bfnrt'.includes(n)) { out += c + n; i++; }
+      else if (n === 'u' && /^[0-9a-fA-F]{4}$/.test(t.slice(i + 2, i + 6))) { out += t.slice(i, i + 6); i += 5; }
+      else out += '\\\\';
+      continue;
+    }
+    if (c === '\n') { out += '\\n'; continue; }
+    if (c === '\r') { out += '\\r'; continue; }
+    if (c === '\t') { out += '\\t'; continue; }
+    out += c;
+  }
+  return out;
+}
+
 function parseJson(text) {
   const t = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  const i = t.indexOf('{');
+  const j = t.lastIndexOf('}');
+  const body = i >= 0 && j > i ? t.slice(i, j + 1) : t;
   try {
-    return JSON.parse(t);
-  } catch {
-    const i = t.indexOf('{');
-    const j = t.lastIndexOf('}');
-    if (i >= 0 && j > i) return JSON.parse(t.slice(i, j + 1));
-    throw new Error('not json');
+    return JSON.parse(body);
+  } catch (e1) {
+    try {
+      return JSON.parse(repairJson(body));
+    } catch {
+      throw e1;
+    }
   }
 }
 
@@ -137,8 +170,8 @@ async function gemini(system, user) {
     let parsed;
     try {
       parsed = parseJson(text);
-    } catch {
-      lastErr = new Error(`Gemini answer unusable (${model}): finishReason=${cand?.finishReason || data?.promptFeedback?.blockReason || 'unknown'}, length=${text.length}`);
+    } catch (pe) {
+      lastErr = new Error(`Gemini answer unusable (${model}): ${pe.message}; finishReason=${cand?.finishReason || data?.promptFeedback?.blockReason || 'unknown'}, length=${text.length}`);
       console.log(`${lastErr.message}\nSTART: ${text.slice(0, 200)}\nEND: ${text.slice(-200)}\n - retrying ${i + 1}/8`);
       if (model === MODEL && FALLBACK_MODEL) useFallback = true;
       await sleep(5000);
@@ -235,9 +268,11 @@ async function main() {
 
     const res = await gemini(SYSTEM, user);
     const summary = String(res.summary || '').trim();
-    const files = Array.isArray(res.files) ? res.files : [];
+    const edits = Array.isArray(res.edits) ? res.edits : [];
+    // "files" (whole-file replies) is still accepted as a fallback.
+    const newFiles = [...(Array.isArray(res.newFiles) ? res.newFiles : []), ...(Array.isArray(res.files) ? res.files : [])];
 
-    if (!files.length) {
+    if (!edits.length && !newFiles.length) {
       finish(summary || 'I need a little more detail. What exactly should change?', []);
       return;
     }
@@ -245,7 +280,37 @@ async function main() {
     const created = [];
     const changed = [];
     let problem = '';
-    for (const f of files) {
+
+    // 1) targeted edits to existing files
+    const pending = new Map(); // path -> { crlf, text }
+    for (const e of edits) {
+      const p = safePath(e && e.path);
+      if (!p || !fs.existsSync(p) || typeof e.find !== 'string' || !e.find.length || typeof e.replace !== 'string') {
+        problem = `Invalid edit (file must exist, "find" and "replace" must be text): ${JSON.stringify(e && e.path)}`;
+        break;
+      }
+      if (!pending.has(p)) {
+        const raw = fs.readFileSync(p, 'utf8');
+        pending.set(p, { crlf: raw.includes('\r\n'), text: raw.replace(/\r\n/g, '\n') });
+      }
+      const st = pending.get(p);
+      const find = e.find.replace(/\r\n/g, '\n');
+      const count = st.text.split(find).length - 1;
+      if (count !== 1) {
+        problem = `${p}: the "find" text ${count === 0 ? 'was not found' : 'appears ' + count + ' times'} in the file. It must match exactly once. Copy it exactly from the current file and add neighbouring lines to make it unique. The text was:\n${e.find.slice(0, 400)}`;
+        break;
+      }
+      st.text = st.text.replace(find, () => e.replace.replace(/\r\n/g, '\n'));
+    }
+    if (!problem) {
+      for (const [p, st] of pending) {
+        fs.writeFileSync(p, st.crlf ? st.text.replace(/\n/g, '\r\n') : st.text);
+        changed.push(p);
+      }
+    }
+
+    // 2) new files (or whole-file replacement as a fallback)
+    for (const f of problem ? [] : newFiles) {
       const p = safePath(f && f.path);
       if (!p || typeof f.content !== 'string' || !f.content.length) {
         problem = `Invalid or forbidden file entry: ${JSON.stringify(f && f.path)}`;
@@ -255,7 +320,7 @@ async function main() {
         const old = fs.readFileSync(p, 'utf8');
         if (old === f.content) continue;
         if (old.length > 400 && f.content.length < old.length * 0.5) {
-          problem = `${p}: the new content is less than half the size of the original, it looks truncated. Return the COMPLETE file.`;
+          problem = `${p}: the new content is less than half the size of the original, it looks truncated. Use small edits instead.`;
           break;
         }
       } else {
@@ -263,7 +328,7 @@ async function main() {
       }
       fs.mkdirSync(path.dirname(p), { recursive: true });
       fs.writeFileSync(p, f.content);
-      changed.push(p);
+      if (!changed.includes(p)) changed.push(p);
     }
 
     if (!problem && !changed.length) {
