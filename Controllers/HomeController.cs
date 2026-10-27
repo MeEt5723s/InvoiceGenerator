@@ -323,7 +323,7 @@ public class HomeController : Controller
         var parts = new[] { numberPart, namePart }
             .Where(p => !string.IsNullOrWhiteSpace(p));
 
-        var result = string.Join("-", parts);
+        var result = string.Join("_", parts);
         return string.IsNullOrWhiteSpace(result) ? "Invoice" : result;
     }
 }
