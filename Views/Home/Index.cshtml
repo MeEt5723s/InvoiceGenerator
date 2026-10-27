@@ -638,10 +638,10 @@ INDIA</textarea>
                 refundToggle.dispatchEvent(new Event('change'));
             }
 
-            // "INV0072/2026-27" + "Deepak Soni" -> "INV0072-Deepak Soni.pdf"
+            // "INV0072/2026-27" + "Deepak Soni" -> "INV0072_Deepak Soni.pdf"
             const numberPart = (inv.invoiceNumber || '').split(/[/\\]/)[0].trim().replace(/_/g, ' ');
             const namePart = (inv.billToName || '').trim().split(/\s+/).join(' ').replace(/_/g, ' ');
-            const base = [numberPart, namePart].filter(Boolean).join('-').replace(/[:*?"<>|/\\]/g, '').replace(/_/g, ' ').trim();
+            const base = [numberPart, namePart].filter(Boolean).join('_').replace(/[:*?"<>|/\\]/g, '').replace(/_/g, '_').trim();
             document.getElementById('customFileName').value = base ? `${base}.pdf` : '';
 
             calculateAmounts();
