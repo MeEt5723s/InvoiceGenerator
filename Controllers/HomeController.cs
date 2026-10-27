@@ -273,13 +273,13 @@ public class HomeController : Controller
 
                 var pdf = _pdfService.GenerateInvoicePdf(invoice);
 
-                // "INV0072/2026-27" + "Deepak Soni" -> "INV0072-Deepak Soni"
+                // "INV0072/2026-27" + "Deepak Soni" -> "INV0072_Deepak Soni"
                 var baseName = BuildPdfBaseName(invoice.InvoiceNumber, invoice.BillToName);
                 var entryName = baseName + ".pdf";
                 int suffix = 1;
                 while (!usedNames.Add(entryName))
                 {
-                    entryName = $"{baseName}-{++suffix}.pdf";
+                    entryName = $"{baseName}_{++suffix}.pdf";
                 }
 
                 var entry = archive.CreateEntry(entryName, CompressionLevel.Fastest);
@@ -300,7 +300,7 @@ public class HomeController : Controller
         return string.IsNullOrWhiteSpace(cleaned) ? "Invoice" : cleaned;
     }
 
-    // "INV0072/2026-27" + "Deepak Soni"  ->  "INV0072-Deepak Soni"
+    // "INV0072/2026-27" + "Deepak Soni"  ->  "INV0072_Deepak Soni"
     // Only the part of the invoice number before the first slash is used.
     private static string BuildPdfBaseName(string? invoiceNumber, string? customerName)
     {
