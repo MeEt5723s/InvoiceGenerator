@@ -300,7 +300,7 @@ public class HomeController : Controller
         return string.IsNullOrWhiteSpace(cleaned) ? "Invoice" : cleaned;
     }
 
-    // "INV0072/2026-27" + "Deepak Soni"  ->  "INV0072-Deepak Soni"
+    // "INV0072/2026-27" + "Deepak Soni"  ->  "INV0072_Deepak Soni"
     // Only the part of the invoice number before the first slash is used.
     private static string BuildPdfBaseName(string? invoiceNumber, string? customerName)
     {
