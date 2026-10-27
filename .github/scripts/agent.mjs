@@ -30,14 +30,28 @@ Rules:
 - Make the smallest change that satisfies the request. Do not refactor or restyle anything else.
 - NEVER change tax / GST calculation, rounding or totals logic unless the request explicitly asks for it.
 - Keep the existing code style and structure. Do not add new dependencies unless unavoidable.
-- If the request is unclear, impossible, or risky, change nothing: return "files": [] and put ONE short, simple question in "summary".
-- To change an EXISTING file, return small edits: {"path", "find", "replace"}. "find" must be copied EXACTLY (same spaces, same line breaks) from the current file and must appear exactly once in it, so include enough neighbouring lines to make it unique. Keep each "find" as short as possible. Do NOT return whole existing files.
-- To create a NEW file, return it under "newFiles" with its complete content.
+- If the request is unclear, impossible, or risky, change nothing: reply with only a SUMMARY line containing ONE short, simple question, and no FILE blocks.
 - Never touch .github/, tests/, .env files, or lock files. If a request would require changing the tax or totals maths, change nothing and ask.
-- "summary": 1-2 plain sentences for a non-technical person describing what changed visually or in behaviour. No code terms.
+- SUMMARY: 1-2 plain sentences for a non-technical person describing what changed visually or in behaviour. No code terms.
+- To change an EXISTING file, use FIND/REPLACE blocks. The FIND text must be copied EXACTLY from the current file (same spaces, quotes, backslashes) and must appear exactly once, so include a neighbouring line if needed. Keep each FIND as short as possible (one to a few lines). Never return whole existing files.
+- If the same change is needed in several places or files, give one block per place.
+- To create a NEW file, use a NEWFILE block with its complete content.
 
-Reply with JSON only: {"summary": string, "edits": [{"path": string, "find": string, "replace": string}], "newFiles": [{"path": string, "content": string}]}
-If nothing should change, use empty "edits" and "newFiles".`;
+Reply in PLAIN TEXT using exactly this format. No JSON, no markdown code fences, no escaping of any kind:
+
+SUMMARY: <your plain-language summary or question>
+
+FILE: path/to/existing/file.cs
+<<<<<<< FIND
+exact existing lines
+=======
+new lines
+>>>>>>> REPLACE
+
+NEWFILE: path/to/new/file.cs
+<<<<<<< CONTENT
+complete content of the new file
+>>>>>>> END`;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const sh = (cmd) => execSync(cmd, { encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 }).trim();
@@ -48,7 +62,7 @@ function run(cmd) {
       encoding: 'utf8',
       maxBuffer: 50 * 1024 * 1024,
       timeout: 10 * 60 * 1000,
-      shell: '/bin/bash',
+      shell: process.platform === 'win32' ? undefined : '/bin/bash',
     });
     return { ok: true, log: out };
   } catch (e) {
@@ -135,7 +149,48 @@ function parseJson(text) {
   }
 }
 
-async function gemini(system, user) {
+// Plain-text reply format (see SYSTEM): SUMMARY + FILE/FIND/REPLACE blocks + NEWFILE blocks.
+function parseReply(text) {
+  let t = text.replace(/\r\n/g, '\n').trim();
+  if (/^```/.test(t) && /```$/.test(t)) t = t.replace(/^```[^\n]*\n/, '').replace(/\n```$/, '');
+  const edits = [];
+  const newFiles = [];
+  const editRe = /^FILE:[ \t]*(.+?)[ \t]*\n<<<<<<< FIND\n([\s\S]*?)\n=======\n([\s\S]*?)\n?>>>>>>> REPLACE[ \t]*$/gm;
+  const newRe = /^NEWFILE:[ \t]*(.+?)[ \t]*\n<<<<<<< CONTENT\n([\s\S]*?)\n>>>>>>> END[ \t]*$/gm;
+  for (const m of t.matchAll(editRe)) edits.push({ path: m[1].trim(), find: m[2], replace: m[3] });
+  for (const m of t.matchAll(newRe)) newFiles.push({ path: m[1].trim(), content: m[2] + '\n' });
+  const sm = t.match(/^SUMMARY:[ \t]*([\s\S]*?)(?=^(?:FILE|NEWFILE):|(?![\s\S]))/m);
+  if (!sm && !edits.length && !newFiles.length) throw new Error('reply is not in the expected format');
+  const half = /^(FILE|NEWFILE):/m.test(t) && !edits.length && !newFiles.length;
+  if (half) throw new Error('FILE/NEWFILE block was not closed properly');
+  return { summary: sm ? sm[1].trim() : '', edits, newFiles };
+}
+
+// Apply one find/replace to text. Exact match first; otherwise match ignoring leading/trailing spaces on each line.
+function applyEdit(text, find, replace) {
+  const exact = text.split(find).length - 1;
+  if (exact === 1) return { text: text.replace(find, () => replace) };
+  if (exact > 1) return { error: `appears ${exact} times` };
+  const tl = text.split('\n');
+  const fl = find.split('\n').map((x) => x.trim());
+  while (fl.length && fl[0] === '') fl.shift();
+  while (fl.length && fl[fl.length - 1] === '') fl.pop();
+  if (!fl.length) return { error: 'was empty' };
+  const hits = [];
+  for (let i = 0; i + fl.length <= tl.length; i++) {
+    let ok = true;
+    for (let k = 0; k < fl.length; k++) {
+      if (tl[i + k].trim() !== fl[k]) { ok = false; break; }
+    }
+    if (ok) hits.push(i);
+  }
+  if (hits.length !== 1) return { error: hits.length ? `appears ${hits.length} times` : 'was not found' };
+  const rl = replace.split('\n');
+  while (rl.length && rl[rl.length - 1] === '') rl.pop();
+  return { text: [...tl.slice(0, hits[0]), ...rl, ...tl.slice(hits[0] + fl.length)].join('\n') };
+}
+
+async function gemini(system, user, mode = 'edits') {
   let lastErr;
   let useFallback = false; // set when the main model gave an unusable answer
   // Up to 8 tries. Overloaded (503) -> wait and retry. Unusable answer -> switch model right away.
@@ -149,7 +204,9 @@ async function gemini(system, user) {
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: 'user', parts: [{ text: user }] }],
-        generationConfig: { responseMimeType: 'application/json', temperature: 0.2, maxOutputTokens: 32768 },
+        generationConfig: mode === 'json'
+          ? { responseMimeType: 'application/json', temperature: 0.2, maxOutputTokens: 32768 }
+          : { temperature: 0.2, maxOutputTokens: 32768 },
       }),
     });
     if (res.networkError || res.status === 429 || res.status >= 500) {
@@ -169,7 +226,7 @@ async function gemini(system, user) {
     const text = (cand?.content?.parts || []).map((p) => p.text || '').join('');
     let parsed;
     try {
-      parsed = parseJson(text);
+      parsed = mode === 'json' ? parseJson(text) : parseReply(text);
     } catch (pe) {
       lastErr = new Error(`Gemini answer unusable (${model}): ${pe.message}; finishReason=${cand?.finishReason || data?.promptFeedback?.blockReason || 'unknown'}, length=${text.length}`);
       console.log(`${lastErr.message}\nSTART: ${text.slice(0, 200)}\nEND: ${text.slice(-200)}\n - retrying ${i + 1}/8`);
@@ -227,7 +284,8 @@ async function chooseContext(convo) {
   if (total <= MAX_CONTEXT_CHARS) return all;
   const r = await gemini(
     'You pick which source files are needed to implement a change request. Reply JSON only: {"files": ["path", ...]} with at most 15 paths from the list.',
-    `${convo}\n\nFILES:\n${all.join('\n')}`
+    `${convo}\n\nFILES:\n${all.join('\n')}`,
+    'json'
   );
   const picked = (r.files || []).filter((f) => all.includes(f));
   return picked.length ? picked : all.slice(0, 15);
@@ -294,13 +352,12 @@ async function main() {
         pending.set(p, { crlf: raw.includes('\r\n'), text: raw.replace(/\r\n/g, '\n') });
       }
       const st = pending.get(p);
-      const find = e.find.replace(/\r\n/g, '\n');
-      const count = st.text.split(find).length - 1;
-      if (count !== 1) {
-        problem = `${p}: the "find" text ${count === 0 ? 'was not found' : 'appears ' + count + ' times'} in the file. It must match exactly once. Copy it exactly from the current file and add neighbouring lines to make it unique. The text was:\n${e.find.slice(0, 400)}`;
+      const r = applyEdit(st.text, e.find.replace(/\r\n/g, '\n'), e.replace.replace(/\r\n/g, '\n'));
+      if (r.error) {
+        problem = `${p}: the FIND text ${r.error} in the file. It must match exactly once. Copy it exactly from the current file and add a neighbouring line to make it unique. The text was:\n${e.find.slice(0, 400)}`;
         break;
       }
-      st.text = st.text.replace(find, () => e.replace.replace(/\r\n/g, '\n'));
+      st.text = r.text;
     }
     if (!problem) {
       for (const [p, st] of pending) {
