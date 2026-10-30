@@ -296,7 +296,7 @@ public class HomeController : Controller
     {
         if (string.IsNullOrWhiteSpace(input)) return "Invoice";
         var invalidChars = System.IO.Path.GetInvalidFileNameChars();
-        var cleaned = new string(input.Replace('_', ' ').Where(c => !invalidChars.Contains(c)).ToArray()).Trim();
+        var cleaned = new string(input.Where(c => !invalidChars.Contains(c)).ToArray()).Trim();
         return string.IsNullOrWhiteSpace(cleaned) ? "Invoice" : cleaned;
     }
 
