@@ -28,6 +28,7 @@ const SYSTEM = `You are a careful web developer maintaining a small invoice gene
 You receive his request in plain words (possibly with earlier feedback) and the current source files.
 
 Rules:
+- If an ANALYSIS is provided, follow its FIX PLAN and make sure every cause it lists is fixed. If the analysis contradicts the code in front of you, trust the code.
 - Make the smallest change that satisfies the request. Do not refactor or restyle anything else.
 - NEVER change tax / GST calculation, rounding or totals logic unless the request explicitly asks for it.
 - Keep the existing code style and structure. Do not add new dependencies unless unavoidable.
@@ -54,6 +55,15 @@ NEWFILE: path/to/new/file.cs
 <<<<<<< CONTENT
 complete content of the new file
 >>>>>>> END`;
+
+const DIAGNOSE = `You are a senior developer investigating a change request for a shop owner's invoice generator. You will be given his request (possibly with earlier attempts and his feedback), sometimes screenshots, and all the source files. Do NOT write code changes yet. Write a short plain-text analysis with exactly these four parts:
+
+1. WHAT HE WANTS: in one or two sentences, what is wrong today and the exact result he expects (give an example value if he gave one).
+2. THE PATH: how that result is produced today, step by step from what he sees on screen to the final output (for example page field -> page script -> form post -> controller -> helper function -> download). For every step name the file and function and quote the exact line(s) involved.
+3. WHERE IT GOES WRONG: quote every line that causes the difference between today's result and the expected one. Look especially for code that LATER undoes, overrides or cleans up an earlier step (Replace, Trim, Sanitize, default values, formatting helpers). If the screen shows the right value but the final output is different, the cause is AFTER the screen, in the server code. If the owner says an earlier attempt did not work, work out why that attempt had no effect (usually it changed the wrong place).
+4. FIX PLAN: each line to change and what it should become. Never plan changes to tax or GST maths.
+
+Be concrete and brief (under 450 words). Quote code exactly as it appears in the files.`;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const sh = (cmd) => execSync(cmd, { encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 }).trim();
@@ -259,11 +269,11 @@ function applyEdit(text, find, replace) {
   return { text: [...tl.slice(0, hits[0]), ...rl, ...tl.slice(hits[0] + fl.length)].join('\n') };
 }
 
-async function gemini(system, user, mode = 'edits', images = []) {
+async function gemini(system, user, mode = 'edits', images = [], tries = 8) {
   let lastErr;
   let useFallback = false; // set when the main model gave an unusable answer
   // Up to 8 tries. Overloaded (503) -> wait and retry. Unusable answer -> switch model right away.
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < tries; i++) {
     const model =
       FALLBACK_MODEL && (useFallback || (i >= 3 && i % 2 === 1)) ? FALLBACK_MODEL : MODEL;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
@@ -284,9 +294,9 @@ async function gemini(system, user, mode = 'edits', images = []) {
           ? `Gemini request failed (${model}): ${res.networkError}`
           : `Gemini ${res.status} (${model}): ${(await res.text()).slice(0, 200)}`
       );
-      console.log(`${lastErr.message} - waiting before retry ${i + 1}/8`);
+      console.log(`${lastErr.message} - waiting before retry ${i + 1}/${tries}`);
       if (model === FALLBACK_MODEL) useFallback = false; // give the main model another go
-      if (i < 7) await sleep(Math.min(15000 * 2 ** i, 120000));
+      if (i < tries - 1) await sleep(Math.min(15000 * 2 ** i, 120000));
       continue;
     }
     if (!res.ok) throw new Error(`Gemini ${res.status} (${model}): ${await res.text()}`);
@@ -295,10 +305,15 @@ async function gemini(system, user, mode = 'edits', images = []) {
     const text = (cand?.content?.parts || []).map((p) => p.text || '').join('');
     let parsed;
     try {
-      parsed = mode === 'json' ? parseJson(text) : parseReply(text);
+      if (mode === 'text') {
+        if (!text.trim()) throw new Error('empty reply');
+        parsed = text.trim();
+      } else {
+        parsed = mode === 'json' ? parseJson(text) : parseReply(text);
+      }
     } catch (pe) {
       lastErr = new Error(`Gemini answer unusable (${model}): ${pe.message}; finishReason=${cand?.finishReason || data?.promptFeedback?.blockReason || 'unknown'}, length=${text.length}`);
-      console.log(`${lastErr.message}\nSTART: ${text.slice(0, 200)}\nEND: ${text.slice(-200)}\n - retrying ${i + 1}/8`);
+      console.log(`${lastErr.message}\nSTART: ${text.slice(0, 200)}\nEND: ${text.slice(-200)}\n - retrying ${i + 1}/${tries}`);
       if (model === MODEL && FALLBACK_MODEL) useFallback = true;
       await sleep(5000);
       continue;
@@ -391,9 +406,21 @@ async function main() {
   const contextFiles = await chooseContext(convo);
   let prevProblem = '';
 
+  // Step 1: investigate before editing (find the whole path and every cause), like a developer would.
+  let analysis = '';
+  try {
+    analysis = await gemini(DIAGNOSE, `${convo}\n\nCURRENT FILES:\n${renderFiles(contextFiles)}`, 'text', images, 4);
+    console.log(`--- ANALYSIS\n${analysis}\n--- END ANALYSIS`);
+  } catch (e) {
+    console.log(`Could not get an analysis (${e.message}); continuing without it.`);
+  }
+
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     console.log(`--- attempt ${attempt}/${MAX_ATTEMPTS}`);
     let user = `${convo}\n\nCURRENT FILES:\n${renderFiles(contextFiles)}`;
+    if (analysis) {
+      user += `\n\nANALYSIS OF THE PROBLEM (written by a senior developer who studied the code; your edits must fix EVERY cause it lists, in the files it names):\n${analysis}`;
+    }
     if (prevProblem) {
       user += `\n\nYOUR PREVIOUS ATTEMPT WAS REJECTED. Fix this and try again:\n${prevProblem}`;
     }
