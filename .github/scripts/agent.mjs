@@ -36,7 +36,7 @@ Rules:
 - SUMMARY: 1-2 plain sentences for a non-technical person describing what changed visually or in behaviour. No code terms.
 - The owner may attach screenshots, shown to you as images and marked [Screenshot N] in the text. A screenshot shows the page as he sees it, often with circles, arrows or notes drawn on it. Use the picture together with his words to work out which part of the page he means, then find the matching code. If you cannot tell which element he means, change nothing and ask.
 - To change an EXISTING file, use FIND/REPLACE blocks. The FIND text must be copied EXACTLY from the current file (same spaces, quotes, backslashes) and must appear exactly once, so include a neighbouring line if needed. Keep each FIND as short as possible (one to a few lines). Never return whole existing files.
-- If the same change is needed in several places or files, give one block per place.
+- One behaviour is often built in several places, for example the server code AND the JavaScript in the page that fills in a field. Search ALL the files you were given for every place that produces what the owner describes (a label, a file name, a number, a default value) and change every one of them. Changing only help text or placeholders does not change behaviour. Give one block per place.
 - To create a NEW file, use a NEWFILE block with its complete content.
 
 Reply in PLAIN TEXT using exactly this format. No JSON, no markdown code fences, no escaping of any kind:
@@ -212,6 +212,27 @@ function parseReply(text) {
   const half = /^(FILE|NEWFILE):/m.test(t) && !edits.length && !newFiles.length;
   if (half) throw new Error('FILE/NEWFILE block was not closed properly');
   return { summary: sm ? sm[1].trim() : '', edits, newFiles };
+}
+
+// When a FIND is not found, show the model the real lines that look most like it, so it can copy them exactly.
+function closestLines(text, find) {
+  const words = (x) => new Set(x.toLowerCase().split(/[^a-z0-9_]+/).filter((w) => w.length > 2));
+  const tl = text.split('\n');
+  let best = -1;
+  let bestScore = 0;
+  for (const fline of find.split('\n')) {
+    const fw = words(fline);
+    if (fw.size < 2) continue;
+    tl.forEach((line, i) => {
+      const lw = words(line);
+      let hit = 0;
+      for (const w of fw) if (lw.has(w)) hit++;
+      const score = hit / Math.max(fw.size, lw.size);
+      if (score > bestScore) { bestScore = score; best = i; }
+    });
+  }
+  if (best < 0 || bestScore < 0.4) return '';
+  return tl.slice(Math.max(0, best - 2), best + 5).join('\n');
 }
 
 // Apply one find/replace to text. Exact match first; otherwise match ignoring leading/trailing spaces on each line.
@@ -402,20 +423,27 @@ async function main() {
       }
       if (!pending.has(p)) {
         const raw = fs.readFileSync(p, 'utf8');
-        pending.set(p, { crlf: raw.includes('\r\n'), text: raw.replace(/\r\n/g, '\n') });
+        pending.set(p, { raw, crlf: raw.includes('\r\n'), text: raw.replace(/\r\n/g, '\n') });
       }
       const st = pending.get(p);
       const r = applyEdit(st.text, e.find.replace(/\r\n/g, '\n'), e.replace.replace(/\r\n/g, '\n'));
       if (r.error) {
-        problem = `${p}: the FIND text ${r.error} in the file. It must match exactly once. Copy it exactly from the current file and add a neighbouring line to make it unique. The text was:\n${e.find.slice(0, 400)}`;
+        const near = r.error === 'was not found' ? closestLines(st.text, e.find) : '';
+        problem = `${p}: the FIND text ${r.error} in the file. It must match exactly once. Copy it exactly from the current file and add a neighbouring line to make it unique. The text was:\n${e.find.slice(0, 400)}` +
+          (near ? `\n\nThe closest real lines in ${p} are (copy from these, character for character):\n${near}` : '');
         break;
       }
       st.text = r.text;
     }
     if (!problem) {
       for (const [p, st] of pending) {
-        fs.writeFileSync(p, st.crlf ? st.text.replace(/\n/g, '\r\n') : st.text);
+        const out = st.crlf ? st.text.replace(/\n/g, '\r\n') : st.text;
+        if (out === st.raw) continue; // this edit did not actually change the file
+        fs.writeFileSync(p, out);
         changed.push(p);
+      }
+      if (edits.length && !changed.length && !newFiles.length) {
+        problem = 'Your edits did not change anything (the FIND and REPLACE texts were the same). Make the real change the owner asked for.';
       }
     }
 
