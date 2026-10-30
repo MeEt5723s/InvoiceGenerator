@@ -42,7 +42,7 @@ public class HomeController : Controller
         {
             var pdf = _pdfService.GenerateInvoicePdf(model);
 
-            // Default: "INV0072-Deepak Soni". A name typed by the user wins, but is sanitized.
+            // Default: "INV0072_Deepak Soni". A name typed by the user wins, but is sanitized.
             var fileName = !string.IsNullOrWhiteSpace(customFileName)
                 ? SanitizeForFileName(System.IO.Path.GetFileNameWithoutExtension(customFileName))
                 : BuildPdfBaseName(model.InvoiceNumber, model.BillToName);
