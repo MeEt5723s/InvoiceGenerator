@@ -15,6 +15,7 @@ const FALLBACK_MODEL = env('GEMINI_FALLBACK_MODEL');
 const REPO = env('GITHUB_REPOSITORY');
 const ISSUE = env('ISSUE_NUMBER');
 const GH_TOKEN = env('GH_TOKEN');
+const TG_TOKEN = env('TELEGRAM_BOT_TOKEN');
 const BUILD_CMD = env('BUILD_COMMAND', 'dotnet build --no-restore');
 const TEST_CMD = env('TEST_COMMAND', 'dotnet test tests/InvoiceGen.Tests');
 const SUMMARY_FILE = env('SUMMARY_FILE', 'agent-summary.txt');
@@ -33,6 +34,7 @@ Rules:
 - If the request is unclear, impossible, or risky, change nothing: reply with only a SUMMARY line containing ONE short, simple question, and no FILE blocks.
 - Never touch .github/, tests/, .env files, or lock files. If a request would require changing the tax or totals maths, change nothing and ask.
 - SUMMARY: 1-2 plain sentences for a non-technical person describing what changed visually or in behaviour. No code terms.
+- The owner may attach screenshots, shown to you as images and marked [Screenshot N] in the text. A screenshot shows the page as he sees it, often with circles, arrows or notes drawn on it. Use the picture together with his words to work out which part of the page he means, then find the matching code. If you cannot tell which element he means, change nothing and ask.
 - To change an EXISTING file, use FIND/REPLACE blocks. The FIND text must be copied EXACTLY from the current file (same spaces, quotes, backslashes) and must appear exactly once, so include a neighbouring line if needed. Keep each FIND as short as possible (one to a few lines). Never return whole existing files.
 - If the same change is needed in several places or files, give one block per place.
 - To create a NEW file, use a NEWFILE block with its complete content.
@@ -84,15 +86,61 @@ async function ghApi(p) {
   return res.json();
 }
 
+const IMG_RE = /\[\[image:([A-Za-z0-9_-]+)\]\]/g;
+const MAX_IMAGES = 3; // only the most recent screenshots are shown to the model
+
 async function conversation() {
   const issue = await ghApi(`/issues/${ISSUE}`);
   const comments = await ghApi(`/issues/${ISSUE}/comments?per_page=100`);
-  let t = `ORIGINAL REQUEST:\n${issue.body || issue.title}\n`;
+  const parts = [{ who: 'ORIGINAL REQUEST', body: issue.body || issue.title }];
   for (const c of comments) {
-    const who = c.user?.type === 'Bot' ? 'WHAT YOU DID EARLIER' : 'LATEST FEEDBACK FROM THE OWNER';
-    t += `\n${who}:\n${c.body}\n`;
+    parts.push({ who: c.user?.type === 'Bot' ? 'WHAT YOU DID EARLIER' : 'LATEST FEEDBACK FROM THE OWNER', body: c.body });
   }
-  return t;
+  const all = [];
+  for (const p of parts) for (const m of p.body.matchAll(IMG_RE)) all.push(m[1]);
+  const keep = all.slice(-MAX_IMAGES);
+  const firstKept = all.length - keep.length;
+  let seen = 0;
+  let t = '';
+  for (const p of parts) {
+    const body = p.body.replace(IMG_RE, () => {
+      const idx = seen++;
+      return idx < firstKept ? '[an earlier screenshot, not shown]' : `[Screenshot ${idx - firstKept + 1} attached]`;
+    });
+    t += `${t ? '\n' : ''}${p.who}:\n${body}\n`;
+  }
+  return { text: t, imageIds: keep };
+}
+
+// Download the screenshots from Telegram. Returns [{mimeType, data(base64)}] or null if one cannot be read.
+const MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+async function loadImages(ids) {
+  const out = [];
+  for (const id of ids) {
+    let img = null;
+    for (let i = 0; i < 3 && !img; i++) {
+      try {
+        if (!TG_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is not set');
+        const meta = await (await fetch(`https://api.telegram.org/bot${TG_TOKEN}/getFile?file_id=${id}`, { signal: AbortSignal.timeout(30_000) })).json();
+        const fp = meta?.result?.file_path;
+        if (!fp) throw new Error(`getFile failed: ${meta?.description || 'no file_path'}`);
+        const mimeType = MIME[fp.split('.').pop().toLowerCase()];
+        if (!mimeType) throw new Error(`unsupported picture type: ${fp}`);
+        const res = await fetch(`https://api.telegram.org/file/bot${TG_TOKEN}/${fp}`, { signal: AbortSignal.timeout(60_000) });
+        if (!res.ok) throw new Error(`download failed: ${res.status}`);
+        const buf = Buffer.from(await res.arrayBuffer());
+        if (buf.length > 8 * 1024 * 1024) throw new Error('picture is too large');
+        img = { mimeType, data: buf.toString('base64') };
+        console.log(`screenshot loaded: ${mimeType}, ${buf.length} bytes`);
+      } catch (e) {
+        console.log(`screenshot download problem (try ${i + 1}/3): ${e.message}`);
+        await sleep(3000);
+      }
+    }
+    if (!img) return null;
+    out.push(img);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- Gemini
@@ -190,7 +238,7 @@ function applyEdit(text, find, replace) {
   return { text: [...tl.slice(0, hits[0]), ...rl, ...tl.slice(hits[0] + fl.length)].join('\n') };
 }
 
-async function gemini(system, user, mode = 'edits') {
+async function gemini(system, user, mode = 'edits', images = []) {
   let lastErr;
   let useFallback = false; // set when the main model gave an unusable answer
   // Up to 8 tries. Overloaded (503) -> wait and retry. Unusable answer -> switch model right away.
@@ -203,7 +251,7 @@ async function gemini(system, user, mode = 'edits') {
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': KEY },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: system }] },
-        contents: [{ role: 'user', parts: [{ text: user }] }],
+        contents: [{ role: 'user', parts: [{ text: user }, ...images.map((im) => ({ inlineData: { mimeType: im.mimeType, data: im.data } }))] }],
         generationConfig: mode === 'json'
           ? { responseMimeType: 'application/json', temperature: 0.2, maxOutputTokens: 32768 }
           : { temperature: 0.2, maxOutputTokens: 32768 },
@@ -313,7 +361,12 @@ function finish(summary, changed) {
 
 async function main() {
   if (!KEY) throw new Error('GEMINI_API_KEY is not set');
-  const convo = await conversation();
+  const { text: convo, imageIds } = await conversation();
+  const images = await loadImages(imageIds);
+  if (images === null) {
+    finish('I could not open the screenshot you sent. Could you send it again, as a normal photo?', []);
+    return;
+  }
   const contextFiles = await chooseContext(convo);
   let prevProblem = '';
 
@@ -324,7 +377,7 @@ async function main() {
       user += `\n\nYOUR PREVIOUS ATTEMPT WAS REJECTED. Fix this and try again:\n${prevProblem}`;
     }
 
-    const res = await gemini(SYSTEM, user);
+    const res = await gemini(SYSTEM, user, 'edits', images);
     const summary = String(res.summary || '').trim();
     const edits = Array.isArray(res.edits) ? res.edits : [];
     // "files" (whole-file replies) is still accepted as a fallback.
