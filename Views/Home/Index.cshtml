@@ -261,10 +261,10 @@ INDIA</textarea>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Refund Policy</label>
-                            <div class="form-check form-switch">
-                                <input asp-for="IsRefundable" class="form-check-input" type="checkbox" role="switch" id="refundableToggle">
+                            <div class="form-check">
+                                <input asp-for="IsRefundable" class="form-check-input" type="checkbox" id="refundableToggle">
                                 <label class="form-check-label" for="refundableToggle" id="refundableLabel">
-                                    Nonrefundable
+                                    Refundable
                                 </label>
                             </div>
                         </div>
@@ -490,26 +490,7 @@ INDIA</textarea>
             validateFields();
         });
 
-        const refundableToggle = document.getElementById('refundableToggle');
-        const refundableLabel = document.getElementById('refundableLabel');
 
-        refundableToggle.addEventListener('change', function () {
-            if (this.checked) {
-                refundableLabel.textContent = 'Refundable';
-                refundableLabel.className = 'form-check-label text-success';
-            } else {
-                refundableLabel.textContent = 'Nonrefundable';
-                refundableLabel.className = 'form-check-label text-danger';
-            }
-        });
-
-        if (refundableToggle.checked) {
-            refundableLabel.textContent = 'Refundable';
-            refundableLabel.className = 'form-check-label text-success';
-        } else {
-            refundableLabel.textContent = 'Nonrefundable';
-            refundableLabel.className = 'form-check-label text-danger';
-        }
 
         // Initial calculations and validation
         calculateAmounts();
